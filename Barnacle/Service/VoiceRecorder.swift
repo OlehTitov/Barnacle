@@ -25,7 +25,7 @@ final class VoiceRecorder {
     private var currentPowerLevel: Float = -160
     private var silenceStartDate: Date?
     private let silenceThreshold: Float = -40
-    private let silenceDuration: TimeInterval = 1.5
+    private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
     func startRecording() throws {
