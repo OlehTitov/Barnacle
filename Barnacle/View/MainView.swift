@@ -131,7 +131,7 @@ struct MainView: View {
                 let response = try await OpenClawService.sendMessage(
                     finalText,
                     gatewayURL: config.gatewayURL,
-                    token: config.hooksToken
+                    token: config.gatewayToken
                 )
 
                 messages.append(MessageModel(role: .assistant, text: response))

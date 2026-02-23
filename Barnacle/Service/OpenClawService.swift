@@ -14,7 +14,7 @@ enum OpenClawService {
         gatewayURL: String,
         token: String
     ) async throws -> String {
-        guard let url = URL(string: "\(gatewayURL)/hooks/agent") else {
+        guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
         }
 
@@ -22,9 +22,10 @@ enum OpenClawService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "message": text,
-            "deliver": false
+            "model": "openclaw",
+            "input": text
         ])
 
         let (data, response): (Data, URLResponse)
@@ -43,32 +44,73 @@ enum OpenClawService {
             break
         case 401, 403:
             throw OpenClawError.unauthorized
+        case 429:
+            throw OpenClawError.serverError(429)
         default:
             throw OpenClawError.serverError(httpResponse.statusCode)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let reply = json["response"] as? String ?? json["message"] as? String ?? json["text"] as? String
-        else {
-            if let raw = String(data: data, encoding: .utf8), !raw.isEmpty {
-                return raw
-            }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw OpenClawError.decodingError
         }
-        return reply
+
+        if json["error"] is [String: Any] {
+            throw OpenClawError.serverError(httpResponse.statusCode)
+        }
+
+        return extractOutputText(from: json)
     }
 
     static func validateConnection(gatewayURL: String) async throws {
-        guard let url = URL(string: "\(gatewayURL)/hooks") else {
+        guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
         }
-        let (_, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200...499).contains(http.statusCode) else {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": "openclaw",
+            "input": "ping"
+        ])
+
+        let (_, response): (Data, URLResponse)
+        do {
+            (_, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw OpenClawError.networkError(error)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw OpenClawError.networkError(URLError(.cannotConnectToHost))
+        }
+
+        guard (200...499).contains(http.statusCode) else {
             throw OpenClawError.networkError(URLError(.cannotConnectToHost))
         }
     }
 
     static func validateAuth(gatewayURL: String, token: String) async throws {
         _ = try await sendMessage("ping", gatewayURL: gatewayURL, token: token)
+    }
+
+    private static func extractOutputText(from json: [String: Any]) -> String {
+        // OpenResponses format: { "output": [ { "type": "message", "content": [ { "type": "output_text", "text": "..." } ] } ] }
+        if let output = json["output"] as? [[String: Any]] {
+            let texts: [String] = output.compactMap { item in
+                guard let content = item["content"] as? [[String: Any]] else { return nil }
+                return content.compactMap { part in
+                    part["text"] as? String
+                }.joined()
+            }
+            let result = texts.joined()
+            if !result.isEmpty { return result }
+        }
+
+        // Fallback: check common top-level keys
+        if let text = json["output_text"] as? String { return text }
+        if let text = json["response"] as? String { return text }
+        if let text = json["text"] as? String { return text }
+
+        return "No response"
     }
 }

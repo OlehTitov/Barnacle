@@ -11,7 +11,7 @@ import Foundation
 final class AppConfig {
 
     var gatewayURL: String
-    var hooksToken: String
+    var gatewayToken: String
     var elevenLabsAPIKey: String
     var voiceID: String
     var isOnboarded: Bool
@@ -21,12 +21,12 @@ final class AppConfig {
         self.voiceID = UserDefaults.standard.string(forKey: "voiceID") ?? ""
         self.isOnboarded = UserDefaults.standard.bool(forKey: "isOnboarded")
 
-        if let tokenData = KeychainStore.load(key: "hooksToken"),
+        if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
         {
-            self.hooksToken = token
+            self.gatewayToken = token
         } else {
-            self.hooksToken = ""
+            self.gatewayToken = ""
         }
 
         if let keyData = KeychainStore.load(key: "elevenLabsAPIKey"),
@@ -43,8 +43,8 @@ final class AppConfig {
         UserDefaults.standard.set(voiceID, forKey: "voiceID")
         UserDefaults.standard.set(isOnboarded, forKey: "isOnboarded")
 
-        if let data = hooksToken.data(using: .utf8) {
-            KeychainStore.save(key: "hooksToken", data: data)
+        if let data = gatewayToken.data(using: .utf8) {
+            KeychainStore.save(key: "gatewayToken", data: data)
         }
 
         if let data = elevenLabsAPIKey.data(using: .utf8) {

@@ -19,7 +19,7 @@ struct SettingsView: View {
     private var gatewayURL = ""
 
     @State
-    private var hooksToken = ""
+    private var gatewayToken = ""
 
     @State
     private var elevenLabsAPIKey = ""
@@ -44,15 +44,15 @@ struct SettingsView: View {
                         .multilineTextAlignment(.trailing)
                 }
 
-                LabeledContent("Hooks Token") {
-                    SecureField("Token", text: $hooksToken)
+                LabeledContent("Gateway Token") {
+                    SecureField("Token", text: $gatewayToken)
                         .multilineTextAlignment(.trailing)
                 }
 
                 Button("Test Connection") {
                     testConnection()
                 }
-                .disabled(gatewayURL.isEmpty || hooksToken.isEmpty || isTesting)
+                .disabled(gatewayURL.isEmpty || gatewayToken.isEmpty || isTesting)
 
                 if let status = testStatus {
                     Text(status)
@@ -89,7 +89,7 @@ struct SettingsView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
                     config.gatewayURL = gatewayURL
-                    config.hooksToken = hooksToken
+                    config.gatewayToken = gatewayToken
                     config.elevenLabsAPIKey = elevenLabsAPIKey
                     config.voiceID = voiceID
                     config.save()
@@ -103,7 +103,7 @@ struct SettingsView: View {
         }
         .onAppear {
             gatewayURL = config.gatewayURL
-            hooksToken = config.hooksToken
+            gatewayToken = config.gatewayToken
             elevenLabsAPIKey = config.elevenLabsAPIKey
             voiceID = config.voiceID
         }
@@ -116,7 +116,7 @@ struct SettingsView: View {
             do {
                 try await OpenClawService.validateAuth(
                     gatewayURL: gatewayURL,
-                    token: hooksToken
+                    token: gatewayToken
                 )
                 testStatus = "Success - Connected!"
             } catch {

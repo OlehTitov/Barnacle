@@ -30,11 +30,11 @@ struct AuthStep: View {
                 Text("Authenticate")
                     .font(.largeTitle.bold())
 
-                Text("Enter your OpenClaw hooks token to authenticate requests.")
+                Text("Enter your OpenClaw gateway token to authenticate requests.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Hooks Token")
+                    Text("Gateway Token")
                         .font(.headline)
 
                     SecureField("Enter your token", text: $tokenInput)
@@ -57,9 +57,9 @@ struct AuthStep: View {
                     Text("How to get your token")
                         .font(.headline)
 
-                    Text("1. Open your OpenClaw dashboard")
-                    Text("2. Navigate to Settings > Webhooks")
-                    Text("3. Enable webhooks and copy the token")
+                    Text("1. Open your OpenClaw gateway configuration")
+                    Text("2. Find gateway.auth.token in your config")
+                    Text("3. Copy the token value")
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -77,7 +77,7 @@ struct AuthStep: View {
                     .disabled(tokenInput.isEmpty || isValidating)
 
                     Button("Next") {
-                        config.hooksToken = tokenInput
+                        config.gatewayToken = tokenInput
                         config.save()
                         onNext()
                     }
@@ -88,7 +88,7 @@ struct AuthStep: View {
             .padding()
         }
         .onAppear {
-            tokenInput = config.hooksToken
+            tokenInput = config.gatewayToken
         }
     }
 
