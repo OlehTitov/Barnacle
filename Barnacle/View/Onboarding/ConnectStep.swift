@@ -89,6 +89,7 @@ struct ConnectStep: View {
             }
             .padding()
         }
+        .scrollContentBackground(.hidden)
         .onAppear {
             urlInput = config.gatewayURL
         }

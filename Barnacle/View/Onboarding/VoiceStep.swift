@@ -95,6 +95,7 @@ struct VoiceStep: View {
             }
             .padding()
         }
+        .scrollContentBackground(.hidden)
         .onAppear {
             apiKeyInput = config.elevenLabsAPIKey
             voiceIDInput = config.voiceID

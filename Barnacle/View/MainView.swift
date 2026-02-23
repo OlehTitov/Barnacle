@@ -8,6 +8,7 @@
 import SwiftUI
 import AVFoundation
 import Speech
+import UIKit
 
 struct MainView: View {
 
@@ -34,31 +35,38 @@ struct MainView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ConversationView(messages: messages)
+            ZStack {
+                BarnacleTheme.background.ignoresSafeArea()
 
-                if !transcriber.partialResult.isEmpty {
-                    Text(transcriber.partialResult)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
+                VStack(spacing: 0) {
+                    ConversationView(messages: messages)
+
+                    if !transcriber.partialResult.isEmpty {
+                        Text(transcriber.partialResult)
+                            .font(BarnacleTheme.monoCaption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                    }
+
+                    if case .error(let message) = appState {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                    }
+
+                    Spacer()
+
+                    MicButtonView(
+                        appState: appState,
+                        audioLevel: recorder.audioLevel,
+                        silenceProgress: recorder.silenceProgress,
+                        action: { handleMicTap() }
+                    )
+                    .padding(.bottom, 40)
                 }
-
-                if case .error(let message) = appState {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
-                        .padding(.top, 4)
-                }
-
-                Spacer()
-
-                MicButtonView(appState: appState) {
-                    handleMicTap()
-                }
-                .padding(.bottom, 40)
             }
             .navigationTitle("Barnacle")
             .navigationBarTitleDisplayMode(.inline)
@@ -84,6 +92,7 @@ struct MainView: View {
         case .recording:
             recorder.stopRecording()
         case .idle, .error:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             startListening()
         default:
             break
@@ -135,6 +144,7 @@ struct MainView: View {
                 )
 
                 messages.append(MessageModel(role: .assistant, text: response))
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
 
                 if !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty {
                     appState = .speaking
@@ -147,6 +157,7 @@ struct MainView: View {
 
                 appState = .idle
             } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
                 appState = .error(error.localizedDescription)
             }
 

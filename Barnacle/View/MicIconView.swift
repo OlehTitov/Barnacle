@@ -17,7 +17,7 @@ struct MicIconView: View {
             ProgressView()
                 .tint(.white)
         case .speaking:
-            Image(systemName: "speaker.wave.2.fill")
+            SpeakingWaveView()
         default:
             Image(systemName: "mic.fill")
         }

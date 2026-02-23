@@ -15,11 +15,15 @@ struct BarnacleApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if config.isOnboarded {
-                MainView()
-            } else {
-                OnboardingFlow()
+            Group {
+                if config.isOnboarded {
+                    MainView()
+                } else {
+                    OnboardingFlow()
+                }
             }
+            .tint(BarnacleTheme.coral)
+            .preferredColorScheme(.dark)
         }
         .environment(config)
     }

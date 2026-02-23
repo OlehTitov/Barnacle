@@ -87,6 +87,7 @@ struct AuthStep: View {
             }
             .padding()
         }
+        .scrollContentBackground(.hidden)
         .onAppear {
             tokenInput = config.gatewayToken
         }

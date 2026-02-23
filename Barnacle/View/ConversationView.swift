@@ -16,22 +16,8 @@ struct ConversationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(messages) { message in
-                        HStack {
-                            if message.role == .user { Spacer(minLength: 60) }
-
-                            Text(message.text)
-                                .padding(12)
-                                .background(
-                                    message.role == .user
-                                        ? Color.accentColor
-                                        : Color(.secondarySystemBackground)
-                                )
-                                .foregroundStyle(message.role == .user ? .white : .primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                            if message.role == .assistant { Spacer(minLength: 60) }
-                        }
-                        .id(message.id)
+                        MessageBubbleView(message: message)
+                            .id(message.id)
                     }
                 }
                 .padding(.horizontal)

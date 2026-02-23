@@ -12,12 +12,18 @@ import Speech
 final class VoiceRecorder {
 
     private(set) var state: RecordingState = .idle
+
+    private(set) var audioLevel: Float = 0
+
+    private(set) var silenceProgress: Double = 0
+
     var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
 
     private let audioEngine = AVAudioEngine()
     private var silenceTimer: Timer?
     private var recordingTimer: Timer?
     private var currentPowerLevel: Float = -160
+    private var silenceStartDate: Date?
     private let silenceThreshold: Float = -40
     private let silenceDuration: TimeInterval = 1.5
     private let maxRecordingDuration: TimeInterval = 60
@@ -43,6 +49,8 @@ final class VoiceRecorder {
         audioEngine.prepare()
         try audioEngine.start()
         state = .recording
+        audioLevel = 0
+        silenceProgress = 0
 
         recordingTimer = Timer.scheduledTimer(withTimeInterval: maxRecordingDuration, repeats: false) { [weak self] _ in
             self?.stopRecording()
@@ -60,12 +68,15 @@ final class VoiceRecorder {
         silenceTimer = nil
         recordingTimer?.invalidate()
         recordingTimer = nil
+        silenceStartDate = nil
         state = .stopped
     }
 
     func reset() {
         recognitionRequest = nil
         state = .idle
+        audioLevel = 0
+        silenceProgress = 0
     }
 
     private nonisolated func processPowerLevel(buffer: AVAudioPCMBuffer) {
@@ -78,24 +89,32 @@ final class VoiceRecorder {
         }
         let rms = sqrt(sum / Float(max(frames, 1)))
         let db = 20 * log10(max(rms, 1e-10))
+        let normalized = max(0, min(1, (db + 60) / 60))
 
         Task { @MainActor [weak self] in
             self?.currentPowerLevel = db
+            self?.audioLevel = normalized
         }
     }
 
     private func startSilenceDetection() {
-        var silentSince: Date?
+        silenceStartDate = nil
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, self.state == .recording else { return }
             if self.currentPowerLevel < self.silenceThreshold {
-                if silentSince == nil {
-                    silentSince = Date()
-                } else if let start = silentSince, Date().timeIntervalSince(start) >= self.silenceDuration {
-                    self.stopRecording()
+                if self.silenceStartDate == nil {
+                    self.silenceStartDate = Date()
+                }
+                if let start = self.silenceStartDate {
+                    let elapsed = Date().timeIntervalSince(start)
+                    self.silenceProgress = min(1, elapsed / self.silenceDuration)
+                    if elapsed >= self.silenceDuration {
+                        self.stopRecording()
+                    }
                 }
             } else {
-                silentSince = nil
+                self.silenceStartDate = nil
+                self.silenceProgress = 0
             }
         }
     }
