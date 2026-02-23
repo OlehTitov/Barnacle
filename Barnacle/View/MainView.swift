@@ -33,6 +33,9 @@ struct MainView: View {
     @State
     private var ttsPlayer = TTSPlayer()
 
+    @State
+    private var streamingTTS = StreamingTTSPlayer()
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -127,6 +130,7 @@ struct MainView: View {
                 guard let request = recorder.recognitionRequest else { return }
 
                 let finalText = try await transcriber.transcribe(request: request)
+                transcriber.cancel()
 
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     recorder.reset()
@@ -137,24 +141,93 @@ struct MainView: View {
                 messages.append(MessageModel(role: .user, text: finalText))
                 appState = .processing
 
-                let response = try await OpenClawService.sendMessage(
-                    finalText,
-                    gatewayURL: config.gatewayURL,
-                    token: config.gatewayToken
-                )
+                let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
+                var streamedText = ""
+                var ttsConnected = false
+                var streamingRequestFailed = false
 
-                messages.append(MessageModel(role: .assistant, text: response))
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                messages.append(MessageModel(role: .assistant, text: ""))
+                let messageIndex = messages.count - 1
 
-                if !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty {
+                do {
+                    let stream = try await OpenClawService.streamMessage(
+                        finalText,
+                        gatewayURL: config.gatewayURL,
+                        token: config.gatewayToken
+                    )
+
+                    appState = .streaming
+
+                    var chunkBuffer = TextChunkBuffer()
+
+                    for try await event in stream {
+                        switch event {
+                        case .textDelta(let delta):
+                            streamedText += delta
+                            messages[messageIndex].text = streamedText
+
+                            if hasTTS && !ttsConnected {
+                                ttsConnected = true
+                                streamingTTS.connect(
+                                    apiKey: config.elevenLabsAPIKey,
+                                    voiceID: config.voiceID
+                                )
+                            }
+
+                            if ttsConnected {
+                                for chunk in chunkBuffer.add(delta) {
+                                    streamingTTS.sendTextChunk(chunk)
+                                }
+                            }
+
+                        case .textDone(let fullText):
+                            streamedText = fullText
+                            messages[messageIndex].text = fullText
+
+                        case .done:
+                            break
+                        }
+                    }
+
+                    if ttsConnected {
+                        if let remainder = chunkBuffer.flush() {
+                            streamingTTS.sendTextChunk(remainder)
+                        }
+                        streamingTTS.endStream()
+                        appState = .speaking
+                        await streamingTTS.waitForPlaybackComplete()
+                        streamingTTS.disconnect()
+                    }
+
+                } catch {
+                    streamingRequestFailed = true
+                    streamingTTS.disconnect()
+                    ttsConnected = false
+                }
+
+                if streamingRequestFailed && streamedText.isEmpty {
+                    appState = .processing
+                    let response = try await OpenClawService.sendMessage(
+                        finalText,
+                        gatewayURL: config.gatewayURL,
+                        token: config.gatewayToken
+                    )
+                    streamedText = response
+                    messages[messageIndex].text = response
+                } else if streamedText.isEmpty {
+                    messages[messageIndex].text = "No response"
+                }
+
+                if hasTTS && !ttsConnected && !streamedText.isEmpty {
                     appState = .speaking
                     try await ttsPlayer.speak(
-                        response,
+                        streamedText,
                         apiKey: config.elevenLabsAPIKey,
                         voiceID: config.voiceID
                     )
                 }
 
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
                 appState = .idle
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)

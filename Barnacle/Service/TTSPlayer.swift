@@ -29,7 +29,7 @@ final class TTSPlayer {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "text": text,
-            "model_id": "eleven_monolingual_v1"
+            "model_id": "eleven_v3"
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)

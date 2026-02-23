@@ -11,5 +11,5 @@ struct MessageModel: Identifiable {
 
     let id = UUID()
     let role: MessageRole
-    let text: String
+    var text: String
 }

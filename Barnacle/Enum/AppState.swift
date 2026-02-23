@@ -13,6 +13,8 @@ enum AppState {
 
     case processing
 
+    case streaming
+
     case speaking
 
     case error(String)

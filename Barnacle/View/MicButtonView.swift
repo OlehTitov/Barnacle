@@ -68,6 +68,7 @@ struct MicButtonView: View {
         case .idle: BarnacleTheme.coral
         case .recording: BarnacleTheme.coral
         case .processing: BarnacleTheme.coral.opacity(0.6)
+        case .streaming: BarnacleTheme.coral.opacity(0.6)
         case .speaking: BarnacleTheme.coral.opacity(0.6)
         case .error: .red.opacity(0.6)
         }
@@ -84,7 +85,7 @@ struct MicButtonView: View {
 
     private var isDisabled: Bool {
         switch appState {
-        case .processing, .speaking: true
+        case .processing, .streaming, .speaking: true
         default: false
         }
     }
@@ -94,6 +95,7 @@ struct MicButtonView: View {
         case .idle: "Microphone"
         case .recording: "Recording"
         case .processing: "Processing"
+        case .streaming: "Streaming"
         case .speaking: "Speaking"
         case .error: "Error"
         }
@@ -104,6 +106,7 @@ struct MicButtonView: View {
         case .idle: "Tap to start recording"
         case .recording: "Tap to stop recording"
         case .processing: "Waiting for response"
+        case .streaming: "Receiving response"
         case .speaking: "Playing response"
         case .error: "Tap to try again"
         }
