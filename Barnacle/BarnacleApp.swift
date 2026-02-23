@@ -9,9 +9,18 @@ import SwiftUI
 
 @main
 struct BarnacleApp: App {
+
+    @State
+    private var config = AppConfig()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if config.isOnboarded {
+                MainView()
+            } else {
+                OnboardingFlow()
+            }
         }
+        .environment(config)
     }
 }
