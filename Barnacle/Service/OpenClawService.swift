@@ -24,8 +24,9 @@ enum OpenClawService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": "openclaw",
-            "input": text
+            "input": text,
+            "model": "openclaw:main",
+            "instructions": "User is speaking via voice. Respond conversationally — short, direct, no markdown formatting, no bullet lists, no asterisks. Write like you're talking, not typing."
         ])
 
         let (data, response): (Data, URLResponse)
