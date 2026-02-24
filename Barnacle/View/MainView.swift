@@ -153,7 +153,8 @@ struct MainView: View {
                     let stream = try await OpenClawService.streamMessage(
                         finalText,
                         gatewayURL: config.gatewayURL,
-                        token: config.gatewayToken
+                        token: config.gatewayToken,
+                        hasTTS: hasTTS
                     )
 
                     appState = .streaming
@@ -170,7 +171,10 @@ struct MainView: View {
                                 ttsConnected = true
                                 streamingTTS.connect(
                                     apiKey: config.elevenLabsAPIKey,
-                                    voiceID: config.voiceID
+                                    voiceID: config.voiceID,
+                                    stability: config.ttsStability.rawValue,
+                                    similarityBoost: config.ttsSimilarityBoost,
+                                    style: config.ttsStyle
                                 )
                             }
 
@@ -210,7 +214,8 @@ struct MainView: View {
                     let response = try await OpenClawService.sendMessage(
                         finalText,
                         gatewayURL: config.gatewayURL,
-                        token: config.gatewayToken
+                        token: config.gatewayToken,
+                        hasTTS: hasTTS
                     )
                     streamedText = response
                     messages[messageIndex].text = response
@@ -223,7 +228,10 @@ struct MainView: View {
                     try await ttsPlayer.speak(
                         streamedText,
                         apiKey: config.elevenLabsAPIKey,
-                        voiceID: config.voiceID
+                        voiceID: config.voiceID,
+                        stability: config.ttsStability.rawValue,
+                        similarityBoost: config.ttsSimilarityBoost,
+                        style: config.ttsStyle
                     )
                 }
 

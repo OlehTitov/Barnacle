@@ -12,7 +12,8 @@ enum OpenClawService {
     static func sendMessage(
         _ text: String,
         gatewayURL: String,
-        token: String
+        token: String,
+        hasTTS: Bool = false
     ) async throws -> String {
         guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
@@ -26,7 +27,7 @@ enum OpenClawService {
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "input": text,
             "model": "openclaw:main",
-            "instructions": "User is speaking via voice. Respond conversationally — short, direct, no markdown formatting, no bullet lists, no asterisks. Write like you're talking, not typing."
+            "instructions": buildInstructions(hasTTS: hasTTS)
         ])
 
         let (data, response): (Data, URLResponse)
@@ -65,7 +66,8 @@ enum OpenClawService {
     static func streamMessage(
         _ text: String,
         gatewayURL: String,
-        token: String
+        token: String,
+        hasTTS: Bool = false
     ) async throws -> AsyncThrowingStream<SSEEvent, Error> {
         guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
@@ -80,7 +82,7 @@ enum OpenClawService {
             "input": text,
             "model": "openclaw:main",
             "stream": true,
-            "instructions": "User is speaking via voice. Respond conversationally — short, direct, no markdown formatting, no bullet lists, no asterisks. Write like you're talking, not typing."
+            "instructions": buildInstructions(hasTTS: hasTTS)
         ])
 
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
@@ -163,6 +165,16 @@ enum OpenClawService {
 
     static func validateAuth(gatewayURL: String, token: String) async throws {
         _ = try await sendMessage("ping", gatewayURL: gatewayURL, token: token)
+    }
+
+    private static func buildInstructions(hasTTS: Bool) -> String {
+        var instructions = "User is speaking from a dedicated voice app. Your response will be converted to speech. Keep answers short and to the point. No markdown formatting, no bullet lists, no asterisks, no special characters. If the topic is broad, ask clarifying questions before going into details."
+
+        if hasTTS {
+            instructions += " Your text will be processed by ElevenLabs TTS. You can use audio tags in square brackets for expressiveness: [laughs], [sighs], [whispers], [sarcastic], [excited], [curious]. Use ellipses (...) for pauses and CAPS for emphasis."
+        }
+
+        return instructions
     }
 
     private static func extractOutputText(from json: [String: Any]) -> String {

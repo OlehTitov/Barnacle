@@ -17,7 +17,10 @@ final class TTSPlayer {
     func speak(
         _ text: String,
         apiKey: String,
-        voiceID: String
+        voiceID: String,
+        stability: Double,
+        similarityBoost: Double,
+        style: Double
     ) async throws {
         guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)") else {
             throw TTSError.invalidVoiceID
@@ -29,7 +32,12 @@ final class TTSPlayer {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "text": text,
-            "model_id": "eleven_v3"
+            "model_id": "eleven_v3",
+            "voice_settings": [
+                "stability": stability,
+                "similarity_boost": similarityBoost,
+                "style": style
+            ]
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)

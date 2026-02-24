@@ -31,9 +31,24 @@ final class StreamingTTSPlayer {
 
     private var voiceID = ""
 
-    func connect(apiKey: String, voiceID: String) {
+    private var stability: Double = 0.5
+
+    private var similarityBoost: Double = 0.8
+
+    private var style: Double = 0.4
+
+    func connect(
+        apiKey: String,
+        voiceID: String,
+        stability: Double,
+        similarityBoost: Double,
+        style: Double
+    ) {
         self.apiKey = apiKey
         self.voiceID = voiceID
+        self.stability = stability
+        self.similarityBoost = similarityBoost
+        self.style = style
 
         let (stream, continuation) = AsyncStream.makeStream(of: String.self)
         chunkContinuation = continuation
@@ -109,9 +124,9 @@ final class StreamingTTSPlayer {
             "text": text,
             "model_id": "eleven_v3",
             "voice_settings": [
-                "stability": 0.5,
-                "similarity_boost": 0.8,
-                "style": 0.4
+                "stability": stability,
+                "similarity_boost": similarityBoost,
+                "style": style
             ]
         ]
 

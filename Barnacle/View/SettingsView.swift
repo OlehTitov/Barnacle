@@ -28,6 +28,15 @@ struct SettingsView: View {
     private var voiceID = ""
 
     @State
+    private var ttsStability: TTSStability = .natural
+
+    @State
+    private var similarityBoost: Double = 0.8
+
+    @State
+    private var style: Double = 0.4
+
+    @State
     private var testStatus: String?
 
     @State
@@ -73,6 +82,32 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .multilineTextAlignment(.trailing)
                 }
+
+                Picker("Stability", selection: $ttsStability) {
+                    ForEach(TTSStability.allCases, id: \.self) { level in
+                        Text(level.label).tag(level)
+                    }
+                }
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Similarity Boost")
+                        Spacer()
+                        Text(String(format: "%.1f", similarityBoost))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $similarityBoost, in: 0...1, step: 0.1)
+                }
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Style")
+                        Spacer()
+                        Text(String(format: "%.1f", style))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $style, in: 0...1, step: 0.1)
+                }
             }
 
             Section {
@@ -92,6 +127,9 @@ struct SettingsView: View {
                     config.gatewayToken = gatewayToken
                     config.elevenLabsAPIKey = elevenLabsAPIKey
                     config.voiceID = voiceID
+                    config.ttsStability = ttsStability
+                    config.ttsSimilarityBoost = similarityBoost
+                    config.ttsStyle = style
                     config.save()
                     dismiss()
                 }
@@ -106,6 +144,9 @@ struct SettingsView: View {
             gatewayToken = config.gatewayToken
             elevenLabsAPIKey = config.elevenLabsAPIKey
             voiceID = config.voiceID
+            ttsStability = config.ttsStability
+            similarityBoost = config.ttsSimilarityBoost
+            style = config.ttsStyle
         }
     }
 
