@@ -24,10 +24,11 @@ enum OpenClawService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
+        let instructions = buildInstructions(hasTTS: hasTTS)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "input": text,
+            "input": "[System: \(instructions)]\n\n\(text)",
             "model": "openclaw:main",
-            "instructions": buildInstructions(hasTTS: hasTTS)
+            "instructions": instructions
         ])
 
         let (data, response): (Data, URLResponse)
@@ -78,11 +79,12 @@ enum OpenClawService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
+        let instructions = buildInstructions(hasTTS: hasTTS)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "input": text,
+            "input": "[System: \(instructions)]\n\n\(text)",
             "model": "openclaw:main",
             "stream": true,
-            "instructions": buildInstructions(hasTTS: hasTTS)
+            "instructions": instructions
         ])
 
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
@@ -168,7 +170,7 @@ enum OpenClawService {
     }
 
     private static func buildInstructions(hasTTS: Bool) -> String {
-        var instructions = "User is speaking from a dedicated voice app. Your response will be converted to speech. Keep answers short and to the point. No markdown formatting, no bullet lists, no asterisks, no special characters. If the topic is broad, ask clarifying questions before going into details."
+        var instructions = "You are on a live telephone call. User is speaking from a dedicated voice app and your response will be converted to speech. Talk exactly like you would on the phone — brief, natural, no filler. Keep responses under 30 words. If user says 3-5 words, reply with about 10 — not 50. Never monologue. No markdown, no lists, no asterisks, no special characters. If the topic is broad or complex, ask one clarifying question instead of giving a long answer."
 
         if hasTTS {
             instructions += " Your text will be processed by ElevenLabs TTS. You can use audio tags in square brackets for expressiveness: [laughs], [sighs], [whispers], [sarcastic], [excited], [curious]. Use ellipses (...) for pauses and CAPS for emphasis."
