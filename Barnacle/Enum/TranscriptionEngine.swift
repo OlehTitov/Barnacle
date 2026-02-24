@@ -11,12 +11,15 @@ enum TranscriptionEngine: String, CaseIterable {
 
     case apple
 
+    case scribe
+
     case whisper
 
     var label: String {
         switch self {
-        case .apple: "Apple"
-        case .whisper: "Whisper"
+        case .apple: "Apple Speech"
+        case .scribe: "ElevenLabs Scribe"
+        case .whisper: "OpenAI Whisper"
         }
     }
 }

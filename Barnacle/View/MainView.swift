@@ -36,6 +36,36 @@ struct MainView: View {
     @State
     private var streamingTTS = StreamingTTSPlayer()
 
+    @State
+    private var scribeTranscriber = ScribeTranscriber()
+
+    private var liveTranscript: String {
+        switch config.transcriptionEngine {
+        case .scribe:
+            return scribeTranscriber.displayText
+        case .apple, .whisper:
+            return transcriber.partialResult
+        }
+    }
+
+    private var activeAudioLevel: Float {
+        switch config.transcriptionEngine {
+        case .scribe:
+            return scribeTranscriber.audioLevel
+        case .apple, .whisper:
+            return recorder.audioLevel
+        }
+    }
+
+    private var activeSilenceProgress: Double {
+        switch config.transcriptionEngine {
+        case .scribe:
+            return scribeTranscriber.silenceProgress
+        case .apple, .whisper:
+            return recorder.silenceProgress
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -44,8 +74,8 @@ struct MainView: View {
                 VStack(spacing: 0) {
                     ConversationView(messages: messages)
 
-                    if !transcriber.partialResult.isEmpty {
-                        Text(transcriber.partialResult)
+                    if !liveTranscript.isEmpty {
+                        Text(liveTranscript)
                             .font(BarnacleTheme.monoCaption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
@@ -64,8 +94,8 @@ struct MainView: View {
 
                     MicButtonView(
                         appState: appState,
-                        audioLevel: recorder.audioLevel,
-                        silenceProgress: recorder.silenceProgress,
+                        audioLevel: activeAudioLevel,
+                        silenceProgress: activeSilenceProgress,
                         action: { handleMicTap() }
                     )
                     .padding(.bottom, 40)
@@ -93,7 +123,11 @@ struct MainView: View {
     private func handleMicTap() {
         switch appState {
         case .recording:
-            recorder.stopRecording()
+            if config.transcriptionEngine == .scribe {
+                scribeTranscriber.stop()
+            } else {
+                recorder.stopRecording()
+            }
         case .idle, .error:
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             startListening()
@@ -106,6 +140,8 @@ struct MainView: View {
         switch config.transcriptionEngine {
         case .apple:
             startListeningApple()
+        case .scribe:
+            startListeningScribe()
         case .whisper:
             startListeningWhisper()
         }
@@ -154,6 +190,46 @@ struct MainView: View {
             }
 
             recorder.reset()
+        }
+    }
+
+    private func startListeningScribe() {
+        Task {
+            let micStatus = AVAudioApplication.shared.recordPermission
+            if micStatus == .undetermined {
+                let granted = await AVAudioApplication.requestRecordPermission()
+                guard granted else {
+                    appState = .error("Microphone permission denied")
+                    return
+                }
+            } else if micStatus == .denied {
+                appState = .error("Microphone permission denied")
+                return
+            }
+
+            do {
+                try scribeTranscriber.start(apiKey: config.elevenLabsAPIKey)
+                appState = .recording
+
+                while scribeTranscriber.state == .recording {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+
+                let finalText = scribeTranscriber.finalTranscript
+
+                guard !finalText.isEmpty else {
+                    scribeTranscriber.reset()
+                    appState = .idle
+                    return
+                }
+
+                try await sendToOpenClaw(finalText)
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                appState = .error(error.localizedDescription)
+            }
+
+            scribeTranscriber.reset()
         }
     }
 
