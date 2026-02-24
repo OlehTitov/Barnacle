@@ -6,8 +6,6 @@
 //
 
 import SwiftUI
-import AVFoundation
-import Speech
 import UIKit
 
 struct MainView: View {
@@ -16,53 +14,25 @@ struct MainView: View {
     private var config
 
     @State
-    private var appState: AppState = .idle
-
-    @State
-    private var messages: [MessageModel] = []
+    private var conversation = ConversationService()
 
     @State
     private var showSettings = false
 
-    @State
-    private var recorder = VoiceRecorder()
-
-    @State
-    private var transcriber = Transcriber()
-
-    @State
-    private var ttsPlayer = TTSPlayer()
-
-    @State
-    private var streamingTTS = StreamingTTSPlayer()
-
-    @State
-    private var scribeTranscriber = ScribeTranscriber()
-
-    private var liveTranscript: String {
-        switch config.transcriptionEngine {
-        case .scribe:
-            return scribeTranscriber.displayText
-        case .apple, .whisper:
-            return transcriber.partialResult
-        }
-    }
-
-    private var activeAudioLevel: Float {
-        switch config.transcriptionEngine {
-        case .scribe:
-            return scribeTranscriber.audioLevel
-        case .apple, .whisper:
-            return recorder.audioLevel
-        }
-    }
-
-    private var activeSilenceProgress: Double {
-        switch config.transcriptionEngine {
-        case .scribe:
-            return scribeTranscriber.silenceProgress
-        case .apple, .whisper:
-            return recorder.silenceProgress
+    private var appState: AppState {
+        switch conversation.phase {
+        case .idle, .finished:
+            return .idle
+        case .greeting:
+            return .speaking
+        case .listening:
+            return .recording
+        case .processing:
+            return .processing
+        case .speaking:
+            return .speaking
+        case .failed(let message):
+            return .error(message)
         }
     }
 
@@ -72,10 +42,10 @@ struct MainView: View {
                 BarnacleTheme.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    ConversationView(messages: messages)
+                    ConversationView(messages: conversation.messages)
 
-                    if !liveTranscript.isEmpty {
-                        Text(liveTranscript)
+                    if !conversation.liveTranscript.isEmpty {
+                        Text(conversation.liveTranscript)
                             .font(BarnacleTheme.monoCaption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
@@ -94,8 +64,8 @@ struct MainView: View {
 
                     MicButtonView(
                         appState: appState,
-                        audioLevel: activeAudioLevel,
-                        silenceProgress: activeSilenceProgress,
+                        audioLevel: conversation.audioLevel,
+                        silenceProgress: conversation.silenceProgress,
                         action: { handleMicTap() }
                     )
                     .padding(.bottom, 40)
@@ -117,280 +87,21 @@ struct MainView: View {
                     SettingsView()
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .barnacleIntentTriggered)) { _ in
+                Task { await conversation.runTurn(config: config, playGreeting: true) }
+            }
         }
     }
 
     private func handleMicTap() {
-        switch appState {
-        case .recording:
-            if config.transcriptionEngine == .scribe {
-                scribeTranscriber.stop()
-            } else {
-                recorder.stopRecording()
-            }
-        case .idle, .error:
+        switch conversation.phase {
+        case .listening:
+            conversation.stopListening()
+        case .idle, .finished, .failed:
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            startListening()
+            Task { await conversation.runTurn(config: config) }
         default:
             break
         }
-    }
-
-    private func startListening() {
-        switch config.transcriptionEngine {
-        case .apple:
-            startListeningApple()
-        case .scribe:
-            startListeningScribe()
-        case .whisper:
-            startListeningWhisper()
-        }
-    }
-
-    private func startListeningApple() {
-        Task {
-            let micStatus = AVAudioApplication.shared.recordPermission
-            if micStatus == .undetermined {
-                let granted = await AVAudioApplication.requestRecordPermission()
-                guard granted else {
-                    appState = .error("Microphone permission denied")
-                    return
-                }
-            } else if micStatus == .denied {
-                appState = .error("Microphone permission denied")
-                return
-            }
-
-            let speechStatus = await Transcriber.requestAuthorization()
-            guard speechStatus == .authorized else {
-                appState = .error("Speech recognition permission denied")
-                return
-            }
-
-            do {
-                transcriber.cancel()
-                try recorder.startRecording()
-                appState = .recording
-
-                guard let request = recorder.recognitionRequest else { return }
-
-                let finalText = try await transcriber.transcribe(request: request)
-                transcriber.cancel()
-
-                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    recorder.reset()
-                    appState = .idle
-                    return
-                }
-
-                try await sendToOpenClaw(finalText)
-            } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                appState = .error(error.localizedDescription)
-            }
-
-            recorder.reset()
-        }
-    }
-
-    private func startListeningScribe() {
-        Task {
-            print("[MainView] startListeningScribe, apiKey length=\(config.elevenLabsAPIKey.count)")
-            let micStatus = AVAudioApplication.shared.recordPermission
-            if micStatus == .undetermined {
-                let granted = await AVAudioApplication.requestRecordPermission()
-                guard granted else {
-                    appState = .error("Microphone permission denied")
-                    return
-                }
-            } else if micStatus == .denied {
-                appState = .error("Microphone permission denied")
-                return
-            }
-
-            do {
-                try scribeTranscriber.start(apiKey: config.elevenLabsAPIKey)
-                appState = .recording
-                print("[MainView] scribe recording started, waiting for stop...")
-
-                while scribeTranscriber.state == .recording {
-                    try await Task.sleep(for: .milliseconds(100))
-                }
-
-                print("[MainView] scribe stopped, state=\(scribeTranscriber.state)")
-                let finalText = scribeTranscriber.finalTranscript
-                print("[MainView] scribe finalTranscript=\"\(finalText)\"")
-
-                guard !finalText.isEmpty else {
-                    print("[MainView] empty transcript, returning to idle")
-                    scribeTranscriber.reset()
-                    appState = .idle
-                    return
-                }
-
-                print("[MainView] sending to OpenClaw: \"\(finalText)\"")
-                try await sendToOpenClaw(finalText)
-            } catch {
-                print("[MainView] scribe error: \(error)")
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                appState = .error(error.localizedDescription)
-            }
-
-            scribeTranscriber.reset()
-        }
-    }
-
-    private func startListeningWhisper() {
-        Task {
-            let micStatus = AVAudioApplication.shared.recordPermission
-            if micStatus == .undetermined {
-                let granted = await AVAudioApplication.requestRecordPermission()
-                guard granted else {
-                    appState = .error("Microphone permission denied")
-                    return
-                }
-            } else if micStatus == .denied {
-                appState = .error("Microphone permission denied")
-                return
-            }
-
-            do {
-                try recorder.startRecording(saveToFile: true)
-                appState = .recording
-
-                while recorder.state == .recording {
-                    try await Task.sleep(for: .milliseconds(100))
-                }
-
-                guard let fileURL = recorder.audioFileURL else {
-                    recorder.reset()
-                    appState = .idle
-                    return
-                }
-
-                appState = .processing
-
-                let finalText = try await WhisperService.transcribe(
-                    fileURL: fileURL,
-                    apiKey: config.openAIAPIKey,
-                    model: config.whisperModel
-                )
-
-                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    recorder.reset()
-                    appState = .idle
-                    return
-                }
-
-                try await sendToOpenClaw(finalText)
-            } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                appState = .error(error.localizedDescription)
-            }
-
-            recorder.reset()
-        }
-    }
-
-    private func sendToOpenClaw(_ finalText: String) async throws {
-        messages.append(MessageModel(role: .user, text: finalText))
-        appState = .processing
-
-        let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
-        var streamedText = ""
-        var ttsConnected = false
-        var streamingRequestFailed = false
-
-        messages.append(MessageModel(role: .assistant, text: ""))
-        let messageIndex = messages.count - 1
-
-        do {
-            let stream = try await OpenClawService.streamMessage(
-                finalText,
-                gatewayURL: config.gatewayURL,
-                token: config.gatewayToken,
-                hasTTS: hasTTS
-            )
-
-            appState = .streaming
-
-            var chunkBuffer = TextChunkBuffer()
-
-            for try await event in stream {
-                switch event {
-                case .textDelta(let delta):
-                    streamedText += delta
-                    messages[messageIndex].text = streamedText
-
-                    if hasTTS && !ttsConnected {
-                        ttsConnected = true
-                        streamingTTS.connect(
-                            apiKey: config.elevenLabsAPIKey,
-                            voiceID: config.voiceID,
-                            stability: config.ttsStability.rawValue,
-                            similarityBoost: config.ttsSimilarityBoost,
-                            style: config.ttsStyle
-                        )
-                    }
-
-                    if ttsConnected {
-                        for chunk in chunkBuffer.add(delta) {
-                            streamingTTS.sendTextChunk(chunk)
-                        }
-                    }
-
-                case .textDone(let fullText):
-                    streamedText = fullText
-                    messages[messageIndex].text = fullText
-
-                case .done:
-                    break
-                }
-            }
-
-            if ttsConnected {
-                if let remainder = chunkBuffer.flush() {
-                    streamingTTS.sendTextChunk(remainder)
-                }
-                streamingTTS.endStream()
-                appState = .speaking
-                await streamingTTS.waitForPlaybackComplete()
-                streamingTTS.disconnect()
-            }
-
-        } catch {
-            streamingRequestFailed = true
-            streamingTTS.disconnect()
-            ttsConnected = false
-        }
-
-        if streamingRequestFailed && streamedText.isEmpty {
-            appState = .processing
-            let response = try await OpenClawService.sendMessage(
-                finalText,
-                gatewayURL: config.gatewayURL,
-                token: config.gatewayToken,
-                hasTTS: hasTTS
-            )
-            streamedText = response
-            messages[messageIndex].text = response
-        } else if streamedText.isEmpty {
-            messages[messageIndex].text = "No response"
-        }
-
-        if hasTTS && !ttsConnected && !streamedText.isEmpty {
-            appState = .speaking
-            try await ttsPlayer.speak(
-                streamedText,
-                apiKey: config.elevenLabsAPIKey,
-                voiceID: config.voiceID,
-                stability: config.ttsStability.rawValue,
-                similarityBoost: config.ttsSimilarityBoost,
-                style: config.ttsStyle
-            )
-        }
-
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        appState = .idle
     }
 }

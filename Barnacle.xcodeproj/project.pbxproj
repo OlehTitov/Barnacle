@@ -10,9 +10,22 @@
 		7C40447F2F4C3C3A0048CE6A /* Barnacle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Barnacle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7C4045442F4E199E0048CE6A /* Exceptions for "Barnacle" folder in "Barnacle" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7C40447E2F4C3C3A0048CE6A /* Barnacle */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7C4044812F4C3C3A0048CE6A /* Barnacle */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7C4045442F4E199E0048CE6A /* Exceptions for "Barnacle" folder in "Barnacle" target */,
+			);
 			path = Barnacle;
 			sourceTree = "<group>";
 		};
@@ -256,6 +269,7 @@
 				DEVELOPMENT_TEAM = 7UQ7Z257NM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Barnacle/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Barnacle needs microphone access to record your voice messages.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Barnacle needs speech recognition to transcribe your voice messages.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -291,6 +305,7 @@
 				DEVELOPMENT_TEAM = 7UQ7Z257NM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Barnacle/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Barnacle needs microphone access to record your voice messages.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Barnacle needs speech recognition to transcribe your voice messages.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

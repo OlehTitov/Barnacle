@@ -31,10 +31,12 @@ final class VoiceRecorder {
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
-    func startRecording(saveToFile: Bool = false) throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+    func startRecording(saveToFile: Bool = false, skipAudioSessionSetup: Bool = false) throws {
+        if !skipAudioSessionSetup {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        }
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)

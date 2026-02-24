@@ -51,6 +51,12 @@ struct SettingsView: View {
     @State
     private var openAIAPIKey = ""
 
+    @State
+    private var isGeneratingGreeting = false
+
+    @State
+    private var greetingStatus: String?
+
     var body: some View {
         Form {
             Section("OpenClaw Connection") {
@@ -138,6 +144,28 @@ struct SettingsView: View {
                     }
                     Slider(value: $style, in: 0...1, step: 0.1)
                 }
+
+                Button {
+                    generateGreeting()
+                } label: {
+                    HStack {
+                        Text("Generate Greeting")
+                        Spacer()
+                        if isGeneratingGreeting {
+                            ProgressView()
+                        } else if GreetingCacheService.isCached {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+                .disabled(elevenLabsAPIKey.isEmpty || voiceID.isEmpty || isGeneratingGreeting)
+
+                if let status = greetingStatus {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(status.contains("Cached") ? .green : .red)
+                }
             }
 
             Section {
@@ -183,6 +211,26 @@ struct SettingsView: View {
             transcriptionEngine = config.transcriptionEngine
             whisperModel = config.whisperModel
             openAIAPIKey = config.openAIAPIKey
+        }
+    }
+
+    private func generateGreeting() {
+        isGeneratingGreeting = true
+        greetingStatus = nil
+        Task {
+            do {
+                try await GreetingCacheService.ensureCached(
+                    apiKey: elevenLabsAPIKey,
+                    voiceID: voiceID,
+                    stability: ttsStability.rawValue,
+                    similarityBoost: similarityBoost,
+                    style: style
+                )
+                greetingStatus = "Cached"
+            } catch {
+                greetingStatus = "Failed: \(error.localizedDescription)"
+            }
+            isGeneratingGreeting = false
         }
     }
 

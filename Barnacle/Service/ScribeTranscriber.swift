@@ -36,12 +36,14 @@ final class ScribeTranscriber {
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
-    func start(apiKey: String) throws {
+    func start(apiKey: String, skipAudioSessionSetup: Bool = false) throws {
         print("[Scribe] start() called, apiKey length=\(apiKey.count)")
 
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        if !skipAudioSessionSetup {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        }
 
         connectWebSocket(apiKey: apiKey)
 
