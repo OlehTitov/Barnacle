@@ -37,6 +37,8 @@ final class ScribeTranscriber {
     private let maxRecordingDuration: TimeInterval = 60
 
     func start(apiKey: String) throws {
+        print("[Scribe] start() called, apiKey length=\(apiKey.count)")
+
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: .duckOthers)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -45,34 +47,50 @@ final class ScribeTranscriber {
 
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.outputFormat(forBus: 0)
+        print("[Scribe] nativeFormat: sampleRate=\(nativeFormat.sampleRate), channels=\(nativeFormat.channelCount)")
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: 16000,
             channels: 1,
             interleaved: false
-        ) else { return }
+        ) else {
+            print("[Scribe] ERROR: failed to create targetFormat")
+            return
+        }
 
         guard let audioConverter = AVAudioConverter(
             from: nativeFormat,
             to: targetFormat
-        ) else { return }
+        ) else {
+            print("[Scribe] ERROR: failed to create AVAudioConverter")
+            return
+        }
+        print("[Scribe] converter created: \(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch -> 16000Hz 1ch")
 
         let ws = webSocketTask
+        print("[Scribe] webSocketTask captured: \(ws != nil)")
+        var chunkCount = 0
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
             guard let self else { return }
             self.processPowerLevel(buffer: buffer)
+            chunkCount += 1
+            if chunkCount <= 3 || chunkCount % 50 == 0 {
+                print("[Scribe] tap #\(chunkCount): bufferFrames=\(buffer.frameLength)")
+            }
             Self.convertAndSend(
                 buffer: buffer,
                 converter: audioConverter,
                 targetFormat: targetFormat,
-                webSocketTask: ws
+                webSocketTask: ws,
+                chunkIndex: chunkCount
             )
         }
 
         audioEngine.prepare()
         try audioEngine.start()
+        print("[Scribe] audioEngine started")
         state = .recording
         audioLevel = 0
         silenceProgress = 0
@@ -92,6 +110,7 @@ final class ScribeTranscriber {
 
     func stop() {
         guard state == .recording else { return }
+        print("[Scribe] stop() called, committed=\"\(committedText)\", partial=\"\(currentPartial)\"")
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -102,6 +121,7 @@ final class ScribeTranscriber {
         recordingTimer = nil
         silenceStartDate = nil
         state = .stopped
+        print("[Scribe] stopped, finalTranscript=\"\(finalTranscript)\"")
     }
 
     func reset() {
@@ -126,48 +146,75 @@ final class ScribeTranscriber {
 
         var request = URLRequest(url: components.url!)
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        print("[Scribe] WebSocket URL: \(components.url!)")
 
         webSocketTask = URLSession.shared.webSocketTask(with: request)
         webSocketTask?.resume()
+        print("[Scribe] WebSocket resumed")
         receiveMessage()
     }
 
     private func receiveMessage() {
         webSocketTask?.receive { [weak self] result in
-            guard let self else { return }
+            guard let self else {
+                print("[Scribe] receiveMessage: self is nil")
+                return
+            }
             switch result {
             case .success(let message):
-                if case .string(let text) = message {
+                switch message {
+                case .string(let text):
+                    print("[Scribe] WS received string (\(text.prefix(200)))")
                     self.handleMessage(text)
+                case .data(let data):
+                    print("[Scribe] WS received binary data (\(data.count) bytes)")
+                @unknown default:
+                    print("[Scribe] WS received unknown message type")
                 }
                 self.receiveMessage()
-            case .failure:
+            case .failure(let error):
+                print("[Scribe] WS receive FAILED: \(error)")
                 break
             }
         }
     }
 
     private func handleMessage(_ text: String) {
-        guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let messageType = json["message_type"] as? String
-        else { return }
+        guard let data = text.data(using: .utf8) else {
+            print("[Scribe] handleMessage: failed to convert text to data")
+            return
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("[Scribe] handleMessage: failed to parse JSON")
+            return
+        }
+        guard let messageType = json["message_type"] as? String else {
+            print("[Scribe] handleMessage: no message_type, keys=\(json.keys.sorted())")
+            return
+        }
+
+        print("[Scribe] message_type=\(messageType)")
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             switch messageType {
+            case "session_started":
+                print("[Scribe] session started, config=\(json["config"] ?? "nil")")
             case "partial_transcript":
                 if let partialText = json["text"] as? String {
+                    print("[Scribe] partial: \"\(partialText)\"")
                     self.currentPartial = partialText
                     self.displayText = self.committedText + partialText
                 }
             case "committed_transcript":
                 if let segment = json["text"] as? String {
+                    print("[Scribe] committed: \"\(segment)\"")
                     self.committedText += (self.committedText.isEmpty ? "" : " ") + segment
                     self.currentPartial = ""
                     self.displayText = self.committedText
                 }
             default:
+                print("[Scribe] unhandled message_type: \(messageType), json=\(json)")
                 break
             }
         }
@@ -177,14 +224,18 @@ final class ScribeTranscriber {
         buffer: AVAudioPCMBuffer,
         converter: AVAudioConverter,
         targetFormat: AVAudioFormat,
-        webSocketTask: URLSessionWebSocketTask?
+        webSocketTask: URLSessionWebSocketTask?,
+        chunkIndex: Int = 0
     ) {
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
         guard let convertedBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,
             frameCapacity: frameCount
-        ) else { return }
+        ) else {
+            print("[Scribe] convertAndSend: failed to create convertedBuffer")
+            return
+        }
 
         var inputProvided = false
         var error: NSError?
@@ -198,8 +249,20 @@ final class ScribeTranscriber {
             return buffer
         }
 
-        guard error == nil, convertedBuffer.frameLength > 0 else { return }
-        guard let floatData = convertedBuffer.floatChannelData?[0] else { return }
+        if let error {
+            print("[Scribe] convertAndSend: converter error: \(error)")
+            return
+        }
+        guard convertedBuffer.frameLength > 0 else {
+            if chunkIndex <= 3 {
+                print("[Scribe] convertAndSend: 0 frames after conversion")
+            }
+            return
+        }
+        guard let floatData = convertedBuffer.floatChannelData?[0] else {
+            print("[Scribe] convertAndSend: no float channel data")
+            return
+        }
 
         let count = Int(convertedBuffer.frameLength)
         var int16Data = Data(count: count * 2)
@@ -212,10 +275,18 @@ final class ScribeTranscriber {
         }
 
         let base64 = int16Data.base64EncodedString()
-        let json = "{\"type\":\"input_audio_chunk\",\"audio\":\"\(base64)\"}"
+        let json = "{\"message_type\":\"input_audio_chunk\",\"audio_base_64\":\"\(base64)\"}"
+
+        if chunkIndex <= 3 || chunkIndex % 50 == 0 {
+            print("[Scribe] sending chunk #\(chunkIndex): \(count) samples, \(int16Data.count) bytes, base64 len=\(base64.count)")
+        }
 
         Task {
-            try? await webSocketTask?.send(.string(json))
+            do {
+                try await webSocketTask?.send(.string(json))
+            } catch {
+                print("[Scribe] WS send FAILED chunk #\(chunkIndex): \(error)")
+            }
         }
     }
 

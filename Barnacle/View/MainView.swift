@@ -195,6 +195,7 @@ struct MainView: View {
 
     private func startListeningScribe() {
         Task {
+            print("[MainView] startListeningScribe, apiKey length=\(config.elevenLabsAPIKey.count)")
             let micStatus = AVAudioApplication.shared.recordPermission
             if micStatus == .undetermined {
                 let granted = await AVAudioApplication.requestRecordPermission()
@@ -210,21 +211,27 @@ struct MainView: View {
             do {
                 try scribeTranscriber.start(apiKey: config.elevenLabsAPIKey)
                 appState = .recording
+                print("[MainView] scribe recording started, waiting for stop...")
 
                 while scribeTranscriber.state == .recording {
                     try await Task.sleep(for: .milliseconds(100))
                 }
 
+                print("[MainView] scribe stopped, state=\(scribeTranscriber.state)")
                 let finalText = scribeTranscriber.finalTranscript
+                print("[MainView] scribe finalTranscript=\"\(finalText)\"")
 
                 guard !finalText.isEmpty else {
+                    print("[MainView] empty transcript, returning to idle")
                     scribeTranscriber.reset()
                     appState = .idle
                     return
                 }
 
+                print("[MainView] sending to OpenClaw: \"\(finalText)\"")
                 try await sendToOpenClaw(finalText)
             } catch {
+                print("[MainView] scribe error: \(error)")
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 appState = .error(error.localizedDescription)
             }
