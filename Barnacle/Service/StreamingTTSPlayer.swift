@@ -21,8 +21,6 @@ final class StreamingTTSPlayer {
 
     private var completedBufferCount = 0
 
-    private var playbackContinuation: CheckedContinuation<Void, Never>?
-
     private var chunkContinuation: AsyncStream<String>.Continuation?
 
     private var processingTask: Task<Void, Never>?
@@ -79,19 +77,15 @@ final class StreamingTTSPlayer {
         await processingTask?.value
         print("[TTS] processingTask done. scheduled=\(scheduledBufferCount), completed=\(completedBufferCount)")
 
-        guard scheduledBufferCount > 0 else { return }
-        if completedBufferCount >= scheduledBufferCount { return }
-
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            if completedBufferCount >= scheduledBufferCount {
-                continuation.resume()
-            } else {
-                playbackContinuation = continuation
-            }
+        let deadline = Date().addingTimeInterval(30)
+        while completedBufferCount < scheduledBufferCount, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
         }
+        print("[TTS] waitForPlaybackComplete finished. completed=\(completedBufferCount)/\(scheduledBufferCount)")
     }
 
     func disconnect() {
+        print("[TTS] disconnect called")
         chunkContinuation?.finish()
         chunkContinuation = nil
         processingTask?.cancel()
@@ -105,7 +99,6 @@ final class StreamingTTSPlayer {
 
         scheduledBufferCount = 0
         completedBufferCount = 0
-        playbackContinuation = nil
     }
 
     private func fetchAndScheduleAudio(for text: String) async {
@@ -226,10 +219,6 @@ final class StreamingTTSPlayer {
                     guard let self else { return }
                     self.completedBufferCount += 1
                     print("[TTS] Buffer completed: \(self.completedBufferCount)/\(self.scheduledBufferCount)")
-                    if self.completedBufferCount >= self.scheduledBufferCount {
-                        self.playbackContinuation?.resume()
-                        self.playbackContinuation = nil
-                    }
                 }
             }
         } catch {
