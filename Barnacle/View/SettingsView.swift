@@ -42,6 +42,15 @@ struct SettingsView: View {
     @State
     private var isTesting = false
 
+    @State
+    private var transcriptionEngine: TranscriptionEngine = .apple
+
+    @State
+    private var whisperModel: WhisperModel = .whisper1
+
+    @State
+    private var openAIAPIKey = ""
+
     var body: some View {
         Form {
             Section("OpenClaw Connection") {
@@ -67,6 +76,27 @@ struct SettingsView: View {
                     Text(status)
                         .font(.caption)
                         .foregroundStyle(status.contains("Success") ? .green : .red)
+                }
+            }
+
+            Section("Transcription") {
+                Picker("Engine", selection: $transcriptionEngine) {
+                    ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
+                        Text(engine.label).tag(engine)
+                    }
+                }
+
+                if transcriptionEngine == .whisper {
+                    Picker("Model", selection: $whisperModel) {
+                        ForEach(WhisperModel.allCases, id: \.self) { model in
+                            Text(model.label).tag(model)
+                        }
+                    }
+
+                    LabeledContent("OpenAI API Key") {
+                        SecureField("API Key", text: $openAIAPIKey)
+                            .multilineTextAlignment(.trailing)
+                    }
                 }
             }
 
@@ -130,6 +160,9 @@ struct SettingsView: View {
                     config.ttsStability = ttsStability
                     config.ttsSimilarityBoost = similarityBoost
                     config.ttsStyle = style
+                    config.transcriptionEngine = transcriptionEngine
+                    config.whisperModel = whisperModel
+                    config.openAIAPIKey = openAIAPIKey
                     config.save()
                     dismiss()
                 }
@@ -147,6 +180,9 @@ struct SettingsView: View {
             ttsStability = config.ttsStability
             similarityBoost = config.ttsSimilarityBoost
             style = config.ttsStyle
+            transcriptionEngine = config.transcriptionEngine
+            whisperModel = config.whisperModel
+            openAIAPIKey = config.openAIAPIKey
         }
     }
 

@@ -17,9 +17,12 @@ final class VoiceRecorder {
 
     private(set) var silenceProgress: Double = 0
 
+    private(set) var audioFileURL: URL?
+
     var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
 
     private let audioEngine = AVAudioEngine()
+    private var audioFile: AVAudioFile?
     private var silenceTimer: Timer?
     private var recordingTimer: Timer?
     private var currentPowerLevel: Float = -160
@@ -28,7 +31,7 @@ final class VoiceRecorder {
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
-    func startRecording() throws {
+    func startRecording(saveToFile: Bool = false) throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: .duckOthers)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -36,14 +39,32 @@ final class VoiceRecorder {
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        self.recognitionRequest = request
+        if saveToFile {
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("wav")
+            let file = try AVAudioFile(
+                forWriting: fileURL,
+                settings: recordingFormat.settings
+            )
+            self.audioFile = file
+            self.audioFileURL = fileURL
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-            request.append(buffer)
-            self.processPowerLevel(buffer: buffer)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+                guard let self else { return }
+                try? file.write(from: buffer)
+                self.processPowerLevel(buffer: buffer)
+            }
+        } else {
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            self.recognitionRequest = request
+
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+                guard let self else { return }
+                request.append(buffer)
+                self.processPowerLevel(buffer: buffer)
+            }
         }
 
         audioEngine.prepare()
@@ -64,6 +85,7 @@ final class VoiceRecorder {
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         recognitionRequest?.endAudio()
+        audioFile = nil
         silenceTimer?.invalidate()
         silenceTimer = nil
         recordingTimer?.invalidate()
@@ -74,6 +96,11 @@ final class VoiceRecorder {
 
     func reset() {
         recognitionRequest = nil
+        if let url = audioFileURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        audioFileURL = nil
+        audioFile = nil
         state = .idle
         audioLevel = 0
         silenceProgress = 0

@@ -103,6 +103,15 @@ struct MainView: View {
     }
 
     private func startListening() {
+        switch config.transcriptionEngine {
+        case .apple:
+            startListeningApple()
+        case .whisper:
+            startListeningWhisper()
+        }
+    }
+
+    private func startListeningApple() {
         Task {
             let micStatus = AVAudioApplication.shared.recordPermission
             if micStatus == .undetermined {
@@ -138,105 +147,7 @@ struct MainView: View {
                     return
                 }
 
-                messages.append(MessageModel(role: .user, text: finalText))
-                appState = .processing
-
-                let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
-                var streamedText = ""
-                var ttsConnected = false
-                var streamingRequestFailed = false
-
-                messages.append(MessageModel(role: .assistant, text: ""))
-                let messageIndex = messages.count - 1
-
-                do {
-                    let stream = try await OpenClawService.streamMessage(
-                        finalText,
-                        gatewayURL: config.gatewayURL,
-                        token: config.gatewayToken,
-                        hasTTS: hasTTS
-                    )
-
-                    appState = .streaming
-
-                    var chunkBuffer = TextChunkBuffer()
-
-                    for try await event in stream {
-                        switch event {
-                        case .textDelta(let delta):
-                            streamedText += delta
-                            messages[messageIndex].text = streamedText
-
-                            if hasTTS && !ttsConnected {
-                                ttsConnected = true
-                                streamingTTS.connect(
-                                    apiKey: config.elevenLabsAPIKey,
-                                    voiceID: config.voiceID,
-                                    stability: config.ttsStability.rawValue,
-                                    similarityBoost: config.ttsSimilarityBoost,
-                                    style: config.ttsStyle
-                                )
-                            }
-
-                            if ttsConnected {
-                                for chunk in chunkBuffer.add(delta) {
-                                    streamingTTS.sendTextChunk(chunk)
-                                }
-                            }
-
-                        case .textDone(let fullText):
-                            streamedText = fullText
-                            messages[messageIndex].text = fullText
-
-                        case .done:
-                            break
-                        }
-                    }
-
-                    if ttsConnected {
-                        if let remainder = chunkBuffer.flush() {
-                            streamingTTS.sendTextChunk(remainder)
-                        }
-                        streamingTTS.endStream()
-                        appState = .speaking
-                        await streamingTTS.waitForPlaybackComplete()
-                        streamingTTS.disconnect()
-                    }
-
-                } catch {
-                    streamingRequestFailed = true
-                    streamingTTS.disconnect()
-                    ttsConnected = false
-                }
-
-                if streamingRequestFailed && streamedText.isEmpty {
-                    appState = .processing
-                    let response = try await OpenClawService.sendMessage(
-                        finalText,
-                        gatewayURL: config.gatewayURL,
-                        token: config.gatewayToken,
-                        hasTTS: hasTTS
-                    )
-                    streamedText = response
-                    messages[messageIndex].text = response
-                } else if streamedText.isEmpty {
-                    messages[messageIndex].text = "No response"
-                }
-
-                if hasTTS && !ttsConnected && !streamedText.isEmpty {
-                    appState = .speaking
-                    try await ttsPlayer.speak(
-                        streamedText,
-                        apiKey: config.elevenLabsAPIKey,
-                        voiceID: config.voiceID,
-                        stability: config.ttsStability.rawValue,
-                        similarityBoost: config.ttsSimilarityBoost,
-                        style: config.ttsStyle
-                    )
-                }
-
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                appState = .idle
+                try await sendToOpenClaw(finalText)
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 appState = .error(error.localizedDescription)
@@ -244,5 +155,159 @@ struct MainView: View {
 
             recorder.reset()
         }
+    }
+
+    private func startListeningWhisper() {
+        Task {
+            let micStatus = AVAudioApplication.shared.recordPermission
+            if micStatus == .undetermined {
+                let granted = await AVAudioApplication.requestRecordPermission()
+                guard granted else {
+                    appState = .error("Microphone permission denied")
+                    return
+                }
+            } else if micStatus == .denied {
+                appState = .error("Microphone permission denied")
+                return
+            }
+
+            do {
+                try recorder.startRecording(saveToFile: true)
+                appState = .recording
+
+                while recorder.state == .recording {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+
+                guard let fileURL = recorder.audioFileURL else {
+                    recorder.reset()
+                    appState = .idle
+                    return
+                }
+
+                appState = .processing
+
+                let finalText = try await WhisperService.transcribe(
+                    fileURL: fileURL,
+                    apiKey: config.openAIAPIKey,
+                    model: config.whisperModel
+                )
+
+                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    recorder.reset()
+                    appState = .idle
+                    return
+                }
+
+                try await sendToOpenClaw(finalText)
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                appState = .error(error.localizedDescription)
+            }
+
+            recorder.reset()
+        }
+    }
+
+    private func sendToOpenClaw(_ finalText: String) async throws {
+        messages.append(MessageModel(role: .user, text: finalText))
+        appState = .processing
+
+        let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
+        var streamedText = ""
+        var ttsConnected = false
+        var streamingRequestFailed = false
+
+        messages.append(MessageModel(role: .assistant, text: ""))
+        let messageIndex = messages.count - 1
+
+        do {
+            let stream = try await OpenClawService.streamMessage(
+                finalText,
+                gatewayURL: config.gatewayURL,
+                token: config.gatewayToken,
+                hasTTS: hasTTS
+            )
+
+            appState = .streaming
+
+            var chunkBuffer = TextChunkBuffer()
+
+            for try await event in stream {
+                switch event {
+                case .textDelta(let delta):
+                    streamedText += delta
+                    messages[messageIndex].text = streamedText
+
+                    if hasTTS && !ttsConnected {
+                        ttsConnected = true
+                        streamingTTS.connect(
+                            apiKey: config.elevenLabsAPIKey,
+                            voiceID: config.voiceID,
+                            stability: config.ttsStability.rawValue,
+                            similarityBoost: config.ttsSimilarityBoost,
+                            style: config.ttsStyle
+                        )
+                    }
+
+                    if ttsConnected {
+                        for chunk in chunkBuffer.add(delta) {
+                            streamingTTS.sendTextChunk(chunk)
+                        }
+                    }
+
+                case .textDone(let fullText):
+                    streamedText = fullText
+                    messages[messageIndex].text = fullText
+
+                case .done:
+                    break
+                }
+            }
+
+            if ttsConnected {
+                if let remainder = chunkBuffer.flush() {
+                    streamingTTS.sendTextChunk(remainder)
+                }
+                streamingTTS.endStream()
+                appState = .speaking
+                await streamingTTS.waitForPlaybackComplete()
+                streamingTTS.disconnect()
+            }
+
+        } catch {
+            streamingRequestFailed = true
+            streamingTTS.disconnect()
+            ttsConnected = false
+        }
+
+        if streamingRequestFailed && streamedText.isEmpty {
+            appState = .processing
+            let response = try await OpenClawService.sendMessage(
+                finalText,
+                gatewayURL: config.gatewayURL,
+                token: config.gatewayToken,
+                hasTTS: hasTTS
+            )
+            streamedText = response
+            messages[messageIndex].text = response
+        } else if streamedText.isEmpty {
+            messages[messageIndex].text = "No response"
+        }
+
+        if hasTTS && !ttsConnected && !streamedText.isEmpty {
+            appState = .speaking
+            try await ttsPlayer.speak(
+                streamedText,
+                apiKey: config.elevenLabsAPIKey,
+                voiceID: config.voiceID,
+                stability: config.ttsStability.rawValue,
+                similarityBoost: config.ttsSimilarityBoost,
+                style: config.ttsStyle
+            )
+        }
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        appState = .idle
     }
 }

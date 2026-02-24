@@ -18,6 +18,9 @@ final class AppConfig {
     var ttsSimilarityBoost: Double
     var ttsStyle: Double
     var isOnboarded: Bool
+    var transcriptionEngine: TranscriptionEngine
+    var whisperModel: WhisperModel
+    var openAIAPIKey: String
 
     init() {
         self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
@@ -28,6 +31,12 @@ final class AppConfig {
         self.ttsStyle = UserDefaults.standard.object(forKey: "ttsStyle") != nil
             ? UserDefaults.standard.double(forKey: "ttsStyle") : 0.4
         self.isOnboarded = UserDefaults.standard.bool(forKey: "isOnboarded")
+        self.transcriptionEngine = TranscriptionEngine(
+            rawValue: UserDefaults.standard.string(forKey: "transcriptionEngine") ?? ""
+        ) ?? .apple
+        self.whisperModel = WhisperModel(
+            rawValue: UserDefaults.standard.string(forKey: "whisperModel") ?? ""
+        ) ?? .whisper1
 
         if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
@@ -44,6 +53,14 @@ final class AppConfig {
         } else {
             self.elevenLabsAPIKey = ""
         }
+
+        if let keyData = KeychainStore.load(key: "openAIAPIKey"),
+           let key = String(data: keyData, encoding: .utf8)
+        {
+            self.openAIAPIKey = key
+        } else {
+            self.openAIAPIKey = ""
+        }
     }
 
     func save() {
@@ -53,6 +70,8 @@ final class AppConfig {
         UserDefaults.standard.set(ttsSimilarityBoost, forKey: "ttsSimilarityBoost")
         UserDefaults.standard.set(ttsStyle, forKey: "ttsStyle")
         UserDefaults.standard.set(isOnboarded, forKey: "isOnboarded")
+        UserDefaults.standard.set(transcriptionEngine.rawValue, forKey: "transcriptionEngine")
+        UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel")
 
         if let data = gatewayToken.data(using: .utf8) {
             KeychainStore.save(key: "gatewayToken", data: data)
@@ -60,6 +79,10 @@ final class AppConfig {
 
         if let data = elevenLabsAPIKey.data(using: .utf8) {
             KeychainStore.save(key: "elevenLabsAPIKey", data: data)
+        }
+
+        if let data = openAIAPIKey.data(using: .utf8) {
+            KeychainStore.save(key: "openAIAPIKey", data: data)
         }
     }
 }
