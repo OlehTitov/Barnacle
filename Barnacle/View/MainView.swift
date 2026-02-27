@@ -17,6 +17,9 @@ struct MainView: View {
     private var conversation = ConversationService()
 
     @State
+    private var fluidModels = FluidModelService()
+
+    @State
     private var showSettings = false
 
     private var appState: AppState {
@@ -87,13 +90,32 @@ struct MainView: View {
                     SettingsView()
                 }
             }
+            .overlay {
+                if config.transcriptionEngine == .fluid && !fluidModels.isReady {
+                    ModelDownloadView(
+                        isPreparing: fluidModels.isPreparing,
+                        errorMessage: fluidModels.errorMessage,
+                        retryAction: { Task { await fluidModels.prepareIfNeeded(using: conversation) } }
+                    )
+                }
+            }
+            .task(id: config.transcriptionEngine) {
+                if config.transcriptionEngine == .fluid {
+                    await fluidModels.prepareIfNeeded(using: conversation)
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .barnacleIntentTriggered)) { _ in
+                guard config.transcriptionEngine != .fluid || fluidModels.isReady else { return }
                 Task { await conversation.runTurn(config: config, playGreeting: true) }
             }
         }
     }
 
     private func handleMicTap() {
+        if config.transcriptionEngine == .fluid && !fluidModels.isReady {
+            return
+        }
+
         switch conversation.phase {
         case .listening:
             conversation.stopListening()

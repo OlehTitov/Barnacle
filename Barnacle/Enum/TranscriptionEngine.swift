@@ -9,6 +9,8 @@ import Foundation
 
 enum TranscriptionEngine: String, CaseIterable {
 
+    case fluid
+
     case apple
 
     case scribe
@@ -17,6 +19,7 @@ enum TranscriptionEngine: String, CaseIterable {
 
     var label: String {
         switch self {
+        case .fluid: "Local (FluidAudio)"
         case .apple: "Apple Speech"
         case .scribe: "ElevenLabs Scribe"
         case .whisper: "OpenAI Whisper"

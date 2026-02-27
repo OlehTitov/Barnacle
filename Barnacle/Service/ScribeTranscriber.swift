@@ -32,12 +32,19 @@ final class ScribeTranscriber {
     private var recordingTimer: Timer?
     private var currentPowerLevel: Float = -160
     private var silenceStartDate: Date?
+    private var hasSpoken = false
+    private var speechFrameCount = 0
+    private let speechFrameThreshold = 3
+    private var apiKey = ""
+    private var audioConverter: AVAudioConverter?
+    private var targetFormat: AVAudioFormat?
     private let silenceThreshold: Float = -40
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
     func start(apiKey: String, skipAudioSessionSetup: Bool = false) throws {
         print("[Scribe] start() called, apiKey length=\(apiKey.count)")
+        self.apiKey = apiKey
 
         if !skipAudioSessionSetup {
             let session = AVAudioSession.sharedInstance()
@@ -45,13 +52,11 @@ final class ScribeTranscriber {
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         }
 
-        connectWebSocket(apiKey: apiKey)
-
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.outputFormat(forBus: 0)
         print("[Scribe] nativeFormat: sampleRate=\(nativeFormat.sampleRate), channels=\(nativeFormat.channelCount)")
 
-        guard let targetFormat = AVAudioFormat(
+        guard let tFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: 16000,
             channels: 1,
@@ -60,42 +65,47 @@ final class ScribeTranscriber {
             print("[Scribe] ERROR: failed to create targetFormat")
             return
         }
+        targetFormat = tFormat
 
-        guard let audioConverter = AVAudioConverter(
+        guard let converter = AVAudioConverter(
             from: nativeFormat,
-            to: targetFormat
+            to: tFormat
         ) else {
             print("[Scribe] ERROR: failed to create AVAudioConverter")
             return
         }
+        audioConverter = converter
         print("[Scribe] converter created: \(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch -> 16000Hz 1ch")
 
-        let ws = webSocketTask
-        print("[Scribe] webSocketTask captured: \(ws != nil)")
         var chunkCount = 0
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
             guard let self else { return }
             self.processPowerLevel(buffer: buffer)
             chunkCount += 1
+            guard self.webSocketTask != nil else { return }
             if chunkCount <= 3 || chunkCount % 50 == 0 {
                 print("[Scribe] tap #\(chunkCount): bufferFrames=\(buffer.frameLength)")
             }
             Self.convertAndSend(
                 buffer: buffer,
-                converter: audioConverter,
-                targetFormat: targetFormat,
-                webSocketTask: ws,
+                converter: converter,
+                targetFormat: tFormat,
+                webSocketTask: self.webSocketTask,
                 chunkIndex: chunkCount
             )
         }
 
-        audioEngine.prepare()
-        try audioEngine.start()
+        if !audioEngine.isRunning {
+            audioEngine.prepare()
+            try audioEngine.start()
+        }
         print("[Scribe] audioEngine started")
         state = .recording
         audioLevel = 0
         silenceProgress = 0
+        hasSpoken = false
+        speechFrameCount = 0
         displayText = ""
         committedText = ""
         currentPartial = ""
@@ -114,7 +124,6 @@ final class ScribeTranscriber {
         guard state == .recording else { return }
         print("[Scribe] stop() called, committed=\"\(committedText)\", partial=\"\(currentPartial)\"")
         audioEngine.inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         silenceTimer?.invalidate()
@@ -126,6 +135,11 @@ final class ScribeTranscriber {
         print("[Scribe] stopped, finalTranscript=\"\(finalTranscript)\"")
     }
 
+    func stopEngine() {
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
+    }
+
     func reset() {
         displayText = ""
         committedText = ""
@@ -135,7 +149,9 @@ final class ScribeTranscriber {
         silenceProgress = 0
     }
 
-    private func connectWebSocket(apiKey: String) {
+    private func connectWebSocket() {
+        guard webSocketTask == nil else { return }
+
         var components = URLComponents(
             string: "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
         )!
@@ -152,7 +168,7 @@ final class ScribeTranscriber {
 
         webSocketTask = URLSession.shared.webSocketTask(with: request)
         webSocketTask?.resume()
-        print("[Scribe] WebSocket resumed")
+        print("[Scribe] WebSocket resumed (speech detected)")
         receiveMessage()
     }
 
@@ -305,8 +321,20 @@ final class ScribeTranscriber {
         let normalized = max(0, min(1, (db + 60) / 60))
 
         Task { @MainActor [weak self] in
-            self?.currentPowerLevel = db
-            self?.audioLevel = normalized
+            guard let self else { return }
+            self.currentPowerLevel = db
+            self.audioLevel = normalized
+            if !self.hasSpoken {
+                if db >= self.silenceThreshold {
+                    self.speechFrameCount += 1
+                    if self.speechFrameCount >= self.speechFrameThreshold {
+                        self.hasSpoken = true
+                        self.connectWebSocket()
+                    }
+                } else {
+                    self.speechFrameCount = 0
+                }
+            }
         }
     }
 
@@ -314,7 +342,10 @@ final class ScribeTranscriber {
         silenceStartDate = nil
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, self.state == .recording else { return }
-            if self.currentPowerLevel < self.silenceThreshold {
+            if self.currentPowerLevel >= self.silenceThreshold {
+                self.silenceStartDate = nil
+                self.silenceProgress = 0
+            } else if self.hasSpoken {
                 if self.silenceStartDate == nil {
                     self.silenceStartDate = Date()
                 }
@@ -325,9 +356,6 @@ final class ScribeTranscriber {
                         self.stop()
                     }
                 }
-            } else {
-                self.silenceStartDate = nil
-                self.silenceProgress = 0
             }
         }
     }

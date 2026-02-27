@@ -48,10 +48,6 @@ final class TTSPlayer {
             throw TTSError.apiError
         }
 
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default)
-        try session.setActive(true)
-
         audioPlayer = try AVAudioPlayer(data: data)
         isPlaying = true
 

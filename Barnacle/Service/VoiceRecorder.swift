@@ -27,6 +27,9 @@ final class VoiceRecorder {
     private var recordingTimer: Timer?
     private var currentPowerLevel: Float = -160
     private var silenceStartDate: Date?
+    private var hasSpoken = false
+    private var speechFrameCount = 0
+    private let speechFrameThreshold = 3
     private let silenceThreshold: Float = -40
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
@@ -74,6 +77,8 @@ final class VoiceRecorder {
         state = .recording
         audioLevel = 0
         silenceProgress = 0
+        hasSpoken = false
+        speechFrameCount = 0
 
         recordingTimer = Timer.scheduledTimer(withTimeInterval: maxRecordingDuration, repeats: false) { [weak self] _ in
             self?.stopRecording()
@@ -121,8 +126,19 @@ final class VoiceRecorder {
         let normalized = max(0, min(1, (db + 60) / 60))
 
         Task { @MainActor [weak self] in
-            self?.currentPowerLevel = db
-            self?.audioLevel = normalized
+            guard let self else { return }
+            self.currentPowerLevel = db
+            self.audioLevel = normalized
+            if !self.hasSpoken {
+                if db >= self.silenceThreshold {
+                    self.speechFrameCount += 1
+                    if self.speechFrameCount >= self.speechFrameThreshold {
+                        self.hasSpoken = true
+                    }
+                } else {
+                    self.speechFrameCount = 0
+                }
+            }
         }
     }
 
@@ -130,7 +146,10 @@ final class VoiceRecorder {
         silenceStartDate = nil
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, self.state == .recording else { return }
-            if self.currentPowerLevel < self.silenceThreshold {
+            if self.currentPowerLevel >= self.silenceThreshold {
+                self.silenceStartDate = nil
+                self.silenceProgress = 0
+            } else if self.hasSpoken {
                 if self.silenceStartDate == nil {
                     self.silenceStartDate = Date()
                 }
@@ -141,9 +160,6 @@ final class VoiceRecorder {
                         self.stopRecording()
                     }
                 }
-            } else {
-                self.silenceStartDate = nil
-                self.silenceProgress = 0
             }
         }
     }

@@ -11,15 +11,9 @@ import Foundation
 @Observable
 final class StreamingTTSPlayer {
 
-    private var audioEngine: AVAudioEngine?
+    private var scheduledChunkCount = 0
 
-    private var playerNode: AVAudioPlayerNode?
-
-    private var engineFormat: AVAudioFormat?
-
-    private var scheduledBufferCount = 0
-
-    private var completedBufferCount = 0
+    private var completedChunkCount = 0
 
     private var chunkContinuation: AsyncStream<String>.Continuation?
 
@@ -34,6 +28,10 @@ final class StreamingTTSPlayer {
     private var similarityBoost: Double = 0.8
 
     private var style: Double = 0.4
+
+    private var currentPlayer: AVAudioPlayer?
+
+    private var pendingPlayers: [AVAudioPlayer] = []
 
     func connect(
         apiKey: String,
@@ -51,7 +49,7 @@ final class StreamingTTSPlayer {
         let (stream, continuation) = AsyncStream.makeStream(of: String.self)
         chunkContinuation = continuation
 
-            processingTask = Task { [weak self] in
+        processingTask = Task { [weak self] in
             print("[TTS] Processing task started")
             for await chunk in stream {
                 print("[TTS] Dequeued chunk: \(chunk.prefix(30))...")
@@ -75,13 +73,13 @@ final class StreamingTTSPlayer {
     func waitForPlaybackComplete() async {
         print("[TTS] waitForPlaybackComplete: waiting for processingTask...")
         await processingTask?.value
-        print("[TTS] processingTask done. scheduled=\(scheduledBufferCount), completed=\(completedBufferCount)")
+        print("[TTS] processingTask done. scheduled=\(scheduledChunkCount), completed=\(completedChunkCount)")
 
         let deadline = Date().addingTimeInterval(30)
-        while completedBufferCount < scheduledBufferCount, Date() < deadline {
+        while completedChunkCount < scheduledChunkCount, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        print("[TTS] waitForPlaybackComplete finished. completed=\(completedBufferCount)/\(scheduledBufferCount)")
+        print("[TTS] waitForPlaybackComplete finished. completed=\(completedChunkCount)/\(scheduledChunkCount)")
     }
 
     func disconnect() {
@@ -91,14 +89,12 @@ final class StreamingTTSPlayer {
         processingTask?.cancel()
         processingTask = nil
 
-        playerNode?.stop()
-        audioEngine?.stop()
-        playerNode = nil
-        audioEngine = nil
-        engineFormat = nil
+        currentPlayer?.stop()
+        currentPlayer = nil
+        pendingPlayers.removeAll()
 
-        scheduledBufferCount = 0
-        completedBufferCount = 0
+        scheduledChunkCount = 0
+        completedChunkCount = 0
     }
 
     private func fetchAndScheduleAudio(for text: String) async {
@@ -154,76 +150,59 @@ final class StreamingTTSPlayer {
         }
     }
 
-    private func setupAudioEngine(format: AVAudioFormat) {
-        print("[TTS] Setting up audio engine with format: \(format)")
-        let engine = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
-
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setActive(false, options: .notifyOthersOnDeactivation)
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
-            try engine.start()
-            player.play()
-            print("[TTS] Audio engine started successfully")
-        } catch {
-            print("[TTS] Audio engine setup failed: \(error)")
-            return
-        }
-
-        audioEngine = engine
-        playerNode = player
-        engineFormat = format
-    }
-
     private func scheduleAudioData(_ data: Data) {
         print("[TTS] scheduleAudioData called, data size: \(data.count) bytes")
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mp3")
-
         do {
-            try data.write(to: tempURL)
-            let audioFile = try AVAudioFile(forReading: tempURL)
-            print("[TTS] Audio file: format=\(audioFile.processingFormat), length=\(audioFile.length)")
+            let player = try AVAudioPlayer(data: data)
+            scheduledChunkCount += 1
+            print("[TTS] Created player #\(scheduledChunkCount)")
 
-            if audioEngine == nil {
-                setupAudioEngine(format: audioFile.processingFormat)
-            }
-
-            guard let playerNode else {
-                print("[TTS] playerNode is nil after setup")
-                try? FileManager.default.removeItem(at: tempURL)
-                return
-            }
-
-            let targetFormat = engineFormat ?? audioFile.processingFormat
-            guard let pcmBuffer = AVAudioPCMBuffer(
-                pcmFormat: targetFormat,
-                frameCapacity: AVAudioFrameCount(audioFile.length)
-            ) else {
-                print("[TTS] Failed to create PCM buffer")
-                try? FileManager.default.removeItem(at: tempURL)
-                return
-            }
-            try audioFile.read(into: pcmBuffer)
-            try? FileManager.default.removeItem(at: tempURL)
-
-            scheduledBufferCount += 1
-            print("[TTS] Scheduling buffer #\(scheduledBufferCount), frames: \(pcmBuffer.frameLength)")
-            playerNode.scheduleBuffer(pcmBuffer) { [weak self] in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.completedBufferCount += 1
-                    print("[TTS] Buffer completed: \(self.completedBufferCount)/\(self.scheduledBufferCount)")
-                }
+            if currentPlayer == nil {
+                currentPlayer = player
+                playChunk(player)
+            } else {
+                pendingPlayers.append(player)
             }
         } catch {
-            print("[TTS] scheduleAudioData error: \(error)")
-            try? FileManager.default.removeItem(at: tempURL)
+            print("[TTS] AVAudioPlayer error: \(error)")
         }
+    }
+
+    private func playChunk(_ player: AVAudioPlayer) {
+        let delegate = ChunkPlayerDelegate { [weak self] in
+            DispatchQueue.main.async {
+                self?.onChunkFinished()
+            }
+        }
+        objc_setAssociatedObject(player, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+        player.delegate = delegate
+        player.play()
+        print("[TTS] Playing chunk \(completedChunkCount + 1)")
+    }
+
+    private func onChunkFinished() {
+        completedChunkCount += 1
+        print("[TTS] Chunk completed: \(completedChunkCount)/\(scheduledChunkCount)")
+
+        if let next = pendingPlayers.first {
+            pendingPlayers.removeFirst()
+            currentPlayer = next
+            playChunk(next)
+        } else {
+            currentPlayer = nil
+        }
+    }
+}
+
+private class ChunkPlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
+
+    let onFinish: () -> Void
+
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        onFinish()
     }
 }

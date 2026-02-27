@@ -33,7 +33,7 @@ final class AppConfig {
         self.isOnboarded = UserDefaults.standard.bool(forKey: "isOnboarded")
         self.transcriptionEngine = TranscriptionEngine(
             rawValue: UserDefaults.standard.string(forKey: "transcriptionEngine") ?? ""
-        ) ?? .apple
+        ) ?? .fluid
         self.whisperModel = WhisperModel(
             rawValue: UserDefaults.standard.string(forKey: "whisperModel") ?? ""
         ) ?? .whisper1

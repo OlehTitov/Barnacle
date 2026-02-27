@@ -32,34 +32,46 @@ final class ConversationService {
 
     private var scribeTranscriber = ScribeTranscriber()
 
+    private var fluidTranscriber = FluidTranscriber()
+
+    func prepareFluidModels() async throws {
+        try await fluidTranscriber.loadModels()
+    }
+
     func runTurn(config: AppConfig, playGreeting: Bool = false) async {
         do {
-            try await activateAudioSession()
+            try activateAudioSession()
 
             if playGreeting && GreetingCacheService.isCached {
                 phase = .greeting
                 try await GreetingCacheService.playGreeting()
             }
 
-            let finalText = try await listen(config: config)
+            while true {
+                let finalText = try await listen(config: config)
 
-            guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    resetRecorders()
+                    scribeTranscriber.stopEngine()
+                    phase = .idle
+                    return
+                }
+
+                try await sendToOpenClaw(finalText, config: config)
                 resetRecorders()
-                phase = .idle
-                return
             }
-
-            try await sendToOpenClaw(finalText, config: config)
-            phase = .finished
         } catch {
             phase = .failed(error.localizedDescription)
         }
 
         resetRecorders()
+        scribeTranscriber.stopEngine()
     }
 
     func stopListening() {
-        if scribeTranscriber.state == .recording {
+        if fluidTranscriber.state == .recording {
+            fluidTranscriber.stop()
+        } else if scribeTranscriber.state == .recording {
             scribeTranscriber.stop()
         } else if recorder.state == .recording {
             recorder.stopRecording()
@@ -80,6 +92,8 @@ final class ConversationService {
         phase = .listening
 
         switch config.transcriptionEngine {
+        case .fluid:
+            return try await listenFluid()
         case .apple:
             return try await listenApple()
         case .scribe:
@@ -87,6 +101,18 @@ final class ConversationService {
         case .whisper:
             return try await listenWhisper(config: config)
         }
+    }
+
+    private func listenFluid() async throws -> String {
+        try await fluidTranscriber.start(skipAudioSessionSetup: true)
+
+        startLiveUpdates(engine: .fluid)
+
+        while fluidTranscriber.state == .recording {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        return fluidTranscriber.finalTranscript
     }
 
     private func listenApple() async throws -> String {
@@ -156,6 +182,10 @@ final class ConversationService {
             guard let self else { return }
             while self.isListening {
                 switch engine {
+                case .fluid:
+                    self.liveTranscript = self.fluidTranscriber.displayText
+                    self.audioLevel = self.fluidTranscriber.audioLevel
+                    self.silenceProgress = self.fluidTranscriber.silenceProgress
                 case .scribe:
                     self.liveTranscript = self.scribeTranscriber.displayText
                     self.audioLevel = self.scribeTranscriber.audioLevel
@@ -267,23 +297,10 @@ final class ConversationService {
         }
     }
 
-    private func activateAudioSession() async throws {
+    private func activateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
-
-        var lastError: Error?
-        for attempt in 1...3 {
-            do {
-                try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
-                try session.setActive(true, options: .notifyOthersOnDeactivation)
-                return
-            } catch {
-                lastError = error
-                print("[ConversationService] audio session attempt \(attempt) failed: \(error)")
-                try? await Task.sleep(for: .milliseconds(300 * attempt))
-            }
-        }
-        throw lastError!
+        try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 
     private func resetRecorders() {
@@ -292,5 +309,6 @@ final class ConversationService {
         silenceProgress = 0
         recorder.reset()
         scribeTranscriber.reset()
+        fluidTranscriber.reset()
     }
 }
