@@ -9,6 +9,9 @@ import SwiftUI
 
 struct ConversationView: View {
 
+    @Environment(AppConfig.self)
+    private var config
+
     let messages: [MessageModel]
 
     let liveTranscript: String
@@ -23,8 +26,8 @@ struct ConversationView: View {
                     }
 
                     if !liveTranscript.isEmpty {
-                        Text(liveTranscript.uppercased())
-                            .font(BarnacleTheme.monoCaption)
+                        Text(displayTranscript)
+                            .font(config.displayFont.font(size: config.displayFontSize))
                             .foregroundStyle(BarnacleTheme.accent.opacity(0.6))
                             .padding(.top, 4)
                             .id("liveTranscript")
@@ -48,5 +51,9 @@ struct ConversationView: View {
                 }
             }
         }
+    }
+
+    private var displayTranscript: String {
+        config.displayAllCaps ? liveTranscript.uppercased() : liveTranscript
     }
 }

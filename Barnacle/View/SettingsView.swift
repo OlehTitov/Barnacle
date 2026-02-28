@@ -55,6 +55,15 @@ struct SettingsView: View {
     private var openAIAPIKey = ""
 
     @State
+    private var displayFont: GeistPixelFont = .square
+
+    @State
+    private var displayFontSize: Double = 14
+
+    @State
+    private var displayAllCaps = true
+
+    @State
     private var isGeneratingGreeting = false
 
     @State
@@ -86,6 +95,30 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(status.contains("Success") ? .green : .red)
                 }
+            }
+
+            Section("Display") {
+                Picker("Font", selection: $displayFont) {
+                    ForEach(GeistPixelFont.allCases, id: \.self) { font in
+                        Text(font.label).tag(font)
+                    }
+                }
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Font Size")
+                        Spacer()
+                        Text("\(Int(displayFontSize))pt")
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $displayFontSize, in: 10...24, step: 1)
+                }
+
+                Toggle("All Caps", isOn: $displayAllCaps)
+
+                Text("PREVIEW TEXT")
+                    .font(displayFont.font(size: displayFontSize))
+                    .foregroundStyle(BarnacleTheme.textPrimary)
             }
 
             Section("Transcription") {
@@ -201,6 +234,9 @@ struct SettingsView: View {
                     config.transcriptionEngine = transcriptionEngine
                     config.whisperModel = whisperModel
                     config.openAIAPIKey = openAIAPIKey
+                    config.displayFont = displayFont
+                    config.displayFontSize = displayFontSize
+                    config.displayAllCaps = displayAllCaps
                     config.save()
                     dismiss()
                 }
@@ -222,6 +258,9 @@ struct SettingsView: View {
             transcriptionEngine = config.transcriptionEngine
             whisperModel = config.whisperModel
             openAIAPIKey = config.openAIAPIKey
+            displayFont = config.displayFont
+            displayFontSize = config.displayFontSize
+            displayAllCaps = config.displayAllCaps
         }
     }
 

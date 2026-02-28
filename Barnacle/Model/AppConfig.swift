@@ -22,6 +22,9 @@ final class AppConfig {
     var transcriptionEngine: TranscriptionEngine
     var whisperModel: WhisperModel
     var openAIAPIKey: String
+    var displayFont: GeistPixelFont
+    var displayFontSize: Double
+    var displayAllCaps: Bool
 
     init() {
         self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
@@ -41,6 +44,13 @@ final class AppConfig {
         self.whisperModel = WhisperModel(
             rawValue: UserDefaults.standard.string(forKey: "whisperModel") ?? ""
         ) ?? .whisper1
+        self.displayFont = GeistPixelFont(
+            rawValue: UserDefaults.standard.string(forKey: "displayFont") ?? ""
+        ) ?? .square
+        self.displayFontSize = UserDefaults.standard.object(forKey: "displayFontSize") != nil
+            ? UserDefaults.standard.double(forKey: "displayFontSize") : 14
+        self.displayAllCaps = UserDefaults.standard.object(forKey: "displayAllCaps") != nil
+            ? UserDefaults.standard.bool(forKey: "displayAllCaps") : true
 
         if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
@@ -77,6 +87,9 @@ final class AppConfig {
         UserDefaults.standard.set(isOnboarded, forKey: "isOnboarded")
         UserDefaults.standard.set(transcriptionEngine.rawValue, forKey: "transcriptionEngine")
         UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel")
+        UserDefaults.standard.set(displayFont.rawValue, forKey: "displayFont")
+        UserDefaults.standard.set(displayFontSize, forKey: "displayFontSize")
+        UserDefaults.standard.set(displayAllCaps, forKey: "displayAllCaps")
 
         if let data = gatewayToken.data(using: .utf8) {
             KeychainStore.save(key: "gatewayToken", data: data)

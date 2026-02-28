@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>GeistPixel-Circle.otf</string>
+		<string>GeistPixel-Grid.otf</string>
+		<string>GeistPixel-Line.otf</string>
+		<string>GeistPixel-Square.otf</string>
+		<string>GeistPixel-Triangle.otf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

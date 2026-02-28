@@ -10,11 +10,14 @@ import UIKit
 
 struct MessageBubbleView: View {
 
+    @Environment(AppConfig.self)
+    private var config
+
     let message: MessageModel
 
     var body: some View {
         Text(formattedText)
-            .font(BarnacleTheme.monoBody)
+            .font(config.displayFont.font(size: config.displayFontSize))
             .foregroundStyle(BarnacleTheme.textPrimary)
             .contextMenu {
                 Button {
@@ -30,6 +33,7 @@ struct MessageBubbleView: View {
 
     private var formattedText: String {
         let prefix = message.role == .user ? "[USER]" : "[AGENT]"
-        return "\(prefix) \(message.text.uppercased())"
+        let text = config.displayAllCaps ? message.text.uppercased() : message.text
+        return "\(prefix) \(text)"
     }
 }
