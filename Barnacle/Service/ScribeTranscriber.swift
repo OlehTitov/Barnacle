@@ -6,7 +6,36 @@
 //
 
 @preconcurrency import AVFoundation
+import FluidAudio
 import Foundation
+
+private final class AudioSampleBuffer: @unchecked Sendable {
+
+    private let lock = NSLock()
+
+    nonisolated(unsafe) private var samples: [Float] = []
+
+    nonisolated func append(_ newSamples: [Float]) {
+        lock.lock()
+        defer { lock.unlock() }
+        samples.append(contentsOf: newSamples)
+    }
+
+    nonisolated func drain(size: Int) -> [Float]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard samples.count >= size else { return nil }
+        let chunk = Array(samples.prefix(size))
+        samples.removeFirst(size)
+        return chunk
+    }
+
+    nonisolated func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        samples.removeAll()
+    }
+}
 
 @Observable
 final class ScribeTranscriber {
@@ -30,19 +59,21 @@ final class ScribeTranscriber {
     private let audioEngine = AVAudioEngine()
     private var silenceTimer: Timer?
     private var recordingTimer: Timer?
-    private var currentPowerLevel: Float = -160
-    private var silenceStartDate: Date?
-    private var hasSpoken = false
-    private var speechFrameCount = 0
-    private let speechFrameThreshold = 3
     private var apiKey = ""
     private var audioConverter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
-    private let silenceThreshold: Float = -40
-    private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
-    func start(apiKey: String, skipAudioSessionSetup: Bool = false) throws {
+    private var vadManager: VadManager?
+    private var vadState: VadStreamState?
+    private var isSpeechActive = false
+    private let sampleBuffer = AudioSampleBuffer()
+    private var processingTask: Task<Void, Never>?
+    private var lastScribeActivityDate: Date?
+    private var hasCommittedText = false
+    private let eouTimeout: TimeInterval = 2.0
+
+    func start(apiKey: String, skipAudioSessionSetup: Bool = false) async throws {
         print("[Scribe] start() called, apiKey length=\(apiKey.count)")
         self.apiKey = apiKey
 
@@ -50,6 +81,12 @@ final class ScribeTranscriber {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+        }
+
+        if vadManager == nil {
+            vadManager = try await VadManager(
+                config: VadConfig(defaultThreshold: 0.75)
+            )
         }
 
         let inputNode = audioEngine.inputNode
@@ -77,18 +114,30 @@ final class ScribeTranscriber {
         audioConverter = converter
         print("[Scribe] converter created: \(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch -> 16000Hz 1ch")
 
-        var chunkCount = 0
+        vadState = await vadManager!.makeStreamState()
+        sampleBuffer.clear()
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
+        var chunkCount = 0
+        let buffer = sampleBuffer
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] pcm, _ in
             guard let self else { return }
-            self.processPowerLevel(buffer: buffer)
+            self.updateAudioLevel(buffer: pcm)
             chunkCount += 1
+
+            Self.convertAndAccumulate(
+                buffer: pcm,
+                converter: converter,
+                targetFormat: tFormat,
+                sampleBuffer: buffer
+            )
+
             guard self.webSocketTask != nil else { return }
             if chunkCount <= 3 || chunkCount % 50 == 0 {
-                print("[Scribe] tap #\(chunkCount): bufferFrames=\(buffer.frameLength)")
+                print("[Scribe] tap #\(chunkCount): bufferFrames=\(pcm.frameLength)")
             }
             Self.convertAndSend(
-                buffer: buffer,
+                buffer: pcm,
                 converter: converter,
                 targetFormat: tFormat,
                 webSocketTask: self.webSocketTask,
@@ -104,11 +153,16 @@ final class ScribeTranscriber {
         state = .recording
         audioLevel = 0
         silenceProgress = 0
-        hasSpoken = false
-        speechFrameCount = 0
+        isSpeechActive = false
+        hasCommittedText = false
+        lastScribeActivityDate = nil
         displayText = ""
         committedText = ""
         currentPartial = ""
+
+        processingTask = Task { [weak self] in
+            await self?.processAudioLoop()
+        }
 
         recordingTimer = Timer.scheduledTimer(
             withTimeInterval: maxRecordingDuration,
@@ -126,11 +180,13 @@ final class ScribeTranscriber {
         audioEngine.inputNode.removeTap(onBus: 0)
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
+        processingTask?.cancel()
+        processingTask = nil
         silenceTimer?.invalidate()
         silenceTimer = nil
         recordingTimer?.invalidate()
         recordingTimer = nil
-        silenceStartDate = nil
+        lastScribeActivityDate = nil
         state = .stopped
         print("[Scribe] stopped, finalTranscript=\"\(finalTranscript)\"")
     }
@@ -147,6 +203,9 @@ final class ScribeTranscriber {
         state = .idle
         audioLevel = 0
         silenceProgress = 0
+        isSpeechActive = false
+        hasCommittedText = false
+        lastScribeActivityDate = nil
     }
 
     private func connectWebSocket() {
@@ -223,6 +282,7 @@ final class ScribeTranscriber {
                     print("[Scribe] partial: \"\(partialText)\"")
                     self.currentPartial = partialText
                     self.displayText = self.committedText + partialText
+                    self.lastScribeActivityDate = Date()
                 }
             case "committed_transcript":
                 if let segment = json["text"] as? String {
@@ -230,12 +290,69 @@ final class ScribeTranscriber {
                     self.committedText += (self.committedText.isEmpty ? "" : " ") + segment
                     self.currentPartial = ""
                     self.displayText = self.committedText
+                    self.lastScribeActivityDate = Date()
+                    self.hasCommittedText = true
                 }
             default:
                 print("[Scribe] unhandled message_type: \(messageType), json=\(json)")
                 break
             }
         }
+    }
+
+    private nonisolated func updateAudioLevel(buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let frames = Int(buffer.frameLength)
+        var sum: Float = 0
+        for i in 0..<frames {
+            let sample = channelData[i]
+            sum += sample * sample
+        }
+        let rms = sqrt(sum / Float(max(frames, 1)))
+        let db = 20 * log10(max(rms, 1e-10))
+        let normalized = max(0, min(1, (db + 60) / 60))
+
+        Task { @MainActor [weak self] in
+            self?.audioLevel = normalized
+        }
+    }
+
+    private nonisolated static func convertAndAccumulate(
+        buffer: AVAudioPCMBuffer,
+        converter: AVAudioConverter,
+        targetFormat: AVAudioFormat,
+        sampleBuffer: AudioSampleBuffer
+    ) {
+        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+        guard let convertedBuffer = AVAudioPCMBuffer(
+            pcmFormat: targetFormat,
+            frameCapacity: frameCount
+        ) else { return }
+
+        var inputProvided = false
+        var error: NSError?
+        converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+            if inputProvided {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            inputProvided = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        guard error == nil, convertedBuffer.frameLength > 0,
+              let floatData = convertedBuffer.floatChannelData?[0]
+        else { return }
+
+        let count = Int(convertedBuffer.frameLength)
+        var samples = [Float](repeating: 0, count: count)
+        for i in 0..<count {
+            samples[i] = floatData[i]
+        }
+
+        sampleBuffer.append(samples)
     }
 
     private nonisolated static func convertAndSend(
@@ -308,54 +425,72 @@ final class ScribeTranscriber {
         }
     }
 
-    private nonisolated func processPowerLevel(buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frames = Int(buffer.frameLength)
-        var sum: Float = 0
-        for i in 0..<frames {
-            let sample = channelData[i]
-            sum += sample * sample
-        }
-        let rms = sqrt(sum / Float(max(frames, 1)))
-        let db = 20 * log10(max(rms, 1e-10))
-        let normalized = max(0, min(1, (db + 60) / 60))
+    private func processAudioLoop() async {
+        let chunkSize = VadManager.chunkSize
 
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.currentPowerLevel = db
-            self.audioLevel = normalized
-            if !self.hasSpoken {
-                if db >= self.silenceThreshold {
-                    self.speechFrameCount += 1
-                    if self.speechFrameCount >= self.speechFrameThreshold {
-                        self.hasSpoken = true
-                        self.connectWebSocket()
-                    }
-                } else {
-                    self.speechFrameCount = 0
+        while state == .recording {
+            let chunk = sampleBuffer.drain(size: chunkSize)
+
+            guard let chunk else {
+                try? await Task.sleep(for: .milliseconds(10))
+                continue
+            }
+
+            await processVadChunk(chunk)
+        }
+    }
+
+    private func processVadChunk(_ chunk: [Float]) async {
+        guard let vadManager, let currentState = vadState else { return }
+
+        do {
+            let result = try await vadManager.processStreamingChunk(
+                chunk,
+                state: currentState,
+                config: .default,
+                returnSeconds: true,
+                timeResolution: 2
+            )
+            vadState = result.state
+
+            if let event = result.event {
+                switch event.kind {
+                case .speechStart:
+                    isSpeechActive = true
+                    connectWebSocket()
+                    print("[Scribe] VAD speechStart -> connecting WebSocket")
+                case .speechEnd:
+                    isSpeechActive = false
+                    print("[Scribe] VAD speechEnd")
                 }
             }
+        } catch {
+            print("[Scribe] VAD error: \(error)")
         }
     }
 
     private func startSilenceDetection() {
-        silenceStartDate = nil
+        lastScribeActivityDate = nil
+        hasCommittedText = false
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, self.state == .recording else { return }
-            if self.currentPowerLevel >= self.silenceThreshold {
-                self.silenceStartDate = nil
+
+            guard self.hasCommittedText, !self.isSpeechActive else {
                 self.silenceProgress = 0
-            } else if self.hasSpoken {
-                if self.silenceStartDate == nil {
-                    self.silenceStartDate = Date()
-                }
-                if let start = self.silenceStartDate {
-                    let elapsed = Date().timeIntervalSince(start)
-                    self.silenceProgress = min(1, elapsed / self.silenceDuration)
-                    if elapsed >= self.silenceDuration {
-                        self.stop()
-                    }
-                }
+                return
+            }
+
+            guard let lastActivity = self.lastScribeActivityDate else {
+                self.silenceProgress = 0
+                return
+            }
+
+            let elapsed = Date().timeIntervalSince(lastActivity)
+            self.silenceProgress = min(1, elapsed / self.eouTimeout)
+
+            if elapsed >= self.eouTimeout {
+                print("[Scribe] EOU timeout reached (\(self.eouTimeout)s since last Scribe activity)")
+                self.stop()
             }
         }
     }

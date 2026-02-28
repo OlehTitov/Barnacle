@@ -136,7 +136,7 @@ final class ConversationService {
     }
 
     private func listenScribe(config: AppConfig) async throws -> String {
-        try scribeTranscriber.start(
+        try await scribeTranscriber.start(
             apiKey: config.elevenLabsAPIKey,
             skipAudioSessionSetup: true
         )
