@@ -73,6 +73,13 @@ final class ScribeTranscriber {
     private var hasCommittedText = false
     private let eouTimeout: TimeInterval = 2.0
 
+    func prepareVad() async throws {
+        guard vadManager == nil else { return }
+        vadManager = try await VadManager(
+            config: VadConfig(defaultThreshold: 0.75)
+        )
+    }
+
     func start(apiKey: String, skipAudioSessionSetup: Bool = false) async throws {
         print("[Scribe] start() called, apiKey length=\(apiKey.count)")
         self.apiKey = apiKey

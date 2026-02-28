@@ -34,11 +34,18 @@ final class ConversationService {
 
     private var fluidTranscriber = FluidTranscriber()
 
+    private var stopRequested = false
+
     func prepareFluidModels() async throws {
         try await fluidTranscriber.loadModels()
     }
 
+    func prepareScribeVad() async throws {
+        try await scribeTranscriber.prepareVad()
+    }
+
     func runTurn(config: AppConfig, playGreeting: Bool = false) async {
+        stopRequested = false
         do {
             try activateAudioSession()
 
@@ -47,7 +54,7 @@ final class ConversationService {
                 try await GreetingCacheService.playGreeting()
             }
 
-            while true {
+            while !stopRequested {
                 let finalText = try await listen(config: config)
 
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -67,6 +74,7 @@ final class ConversationService {
     }
 
     func stopListening() {
+        stopRequested = true
         if fluidTranscriber.state == .recording {
             fluidTranscriber.stop()
         } else if scribeTranscriber.state == .recording {

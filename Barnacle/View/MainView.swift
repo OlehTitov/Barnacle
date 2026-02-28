@@ -79,6 +79,7 @@ struct MainView: View {
             if config.transcriptionEngine == .fluid {
                 await fluidModels.prepareIfNeeded(using: conversation)
             }
+            try? await conversation.prepareScribeVad()
         }
         .onReceive(NotificationCenter.default.publisher(for: .barnacleIntentTriggered)) { _ in
             guard config.transcriptionEngine != .fluid || fluidModels.isReady else { return }
