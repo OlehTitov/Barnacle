@@ -83,6 +83,8 @@ final class ConversationService {
         } else if recorder.state == .recording {
             recorder.stopRecording()
         }
+        streamingTTS.disconnect()
+        ttsPlayer.stop()
     }
 
     private func listen(config: AppConfig) async throws -> String {

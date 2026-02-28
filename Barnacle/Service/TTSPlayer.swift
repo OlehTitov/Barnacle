@@ -18,6 +18,8 @@ final class TTSPlayer {
 
     private var meteringTimer: Timer?
 
+    private var playbackContinuation: CheckedContinuation<Void, Never>?
+
     func speak(
         _ text: String,
         apiKey: String,
@@ -59,7 +61,9 @@ final class TTSPlayer {
         startMetering()
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let delegate = PlayerDelegate {
+            playbackContinuation = continuation
+            let delegate = PlayerDelegate { [weak self] in
+                self?.playbackContinuation = nil
                 continuation.resume()
             }
             audioPlayer?.delegate = delegate
@@ -76,6 +80,8 @@ final class TTSPlayer {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
+        playbackContinuation?.resume()
+        playbackContinuation = nil
     }
 
     private func startMetering() {

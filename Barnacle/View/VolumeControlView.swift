@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct VolumeControlView: View {
 
@@ -14,18 +15,35 @@ struct VolumeControlView: View {
     @State
     private var volume: Int = 7
 
+    @State
+    private var minusPressed = false
+
+    @State
+    private var plusPressed = false
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 0) {
-                Button {
-                    volume = max(0, volume - 1)
-                } label: {
-                    Text("\u{2212}")
-                        .font(.system(size: 22, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
-                        .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
-                        .frame(width: 44, height: BarnacleTheme.controlButtonSize)
-                }
+                Text("\u{2212}")
+                    .font(.system(size: 22, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
+                    .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
+                    .frame(width: 44, height: BarnacleTheme.controlButtonSize)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                if !minusPressed {
+                                    minusPressed = true
+                                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                }
+                            }
+                            .onEnded { _ in
+                                minusPressed = false
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                volume = max(0, volume - 1)
+                            }
+                    )
 
                 Text("\(volume)")
                     .font(.system(size: 18, weight: .medium, design: .monospaced))
@@ -33,15 +51,26 @@ struct VolumeControlView: View {
                     .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
                     .frame(width: 30)
 
-                Button {
-                    volume = min(10, volume + 1)
-                } label: {
-                    Text("+")
-                        .font(.system(size: 22, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
-                        .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
-                        .frame(width: 44, height: BarnacleTheme.controlButtonSize)
-                }
+                Text("+")
+                    .font(.system(size: 22, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
+                    .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
+                    .frame(width: 44, height: BarnacleTheme.controlButtonSize)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                if !plusPressed {
+                                    plusPressed = true
+                                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                }
+                            }
+                            .onEnded { _ in
+                                plusPressed = false
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                volume = min(10, volume + 1)
+                            }
+                    )
             }
             .background(
                 Capsule()

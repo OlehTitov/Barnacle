@@ -53,7 +53,7 @@ struct MainView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 12)
 
-                displayPanel
+                DisplayPanelView(conversation: conversation, appState: appState)
 
                 Spacer()
 
@@ -109,37 +109,6 @@ struct MainView: View {
         }
     }
 
-    private var displayPanel: some View {
-        VStack(spacing: 0) {
-            ConversationView(
-                messages: conversation.messages,
-                liveTranscript: conversation.liveTranscript
-            )
-
-            if case .error(let message) = appState {
-                Text(message)
-                    .font(BarnacleTheme.monoCaption)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-            }
-
-            Spacer(minLength: 0)
-
-            AudioLevelBarView(
-                audioLevel: conversation.audioLevel,
-                silenceProgress: conversation.silenceProgress,
-                appState: appState
-            )
-            .padding(.bottom, 16)
-            .padding(.horizontal, 16)
-        }
-        .frame(maxWidth: .infinity)
-        .background(BarnacleTheme.displayBackground)
-        .clipShape(RoundedRectangle(cornerRadius: BarnacleTheme.displayCornerRadius))
-        .padding(.horizontal, 16)
-    }
-
     private var controlBar: some View {
         HStack(spacing: 32) {
             PowerButtonView(appState: appState, action: { handleMicTap() })
@@ -156,13 +125,11 @@ struct MainView: View {
         }
 
         switch conversation.phase {
-        case .listening:
-            conversation.stopListening()
         case .idle, .finished, .failed:
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            SFXPlayer.play("power-on")
             Task { await conversation.runTurn(config: config) }
         default:
-            break
+            conversation.stopListening()
         }
     }
 }
