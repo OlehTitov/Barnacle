@@ -184,6 +184,11 @@ final class ConversationService {
         return false
     }
 
+    private var isSpeaking: Bool {
+        if case .speaking = phase { return true }
+        return false
+    }
+
     private func startLiveUpdates(engine: TranscriptionEngine) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -202,6 +207,17 @@ final class ConversationService {
                     self.audioLevel = self.recorder.audioLevel
                     self.silenceProgress = self.recorder.silenceProgress
                 }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    private func startSpeakingUpdates() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            while self.isSpeaking {
+                self.audioLevel = max(self.streamingTTS.audioLevel, self.ttsPlayer.audioLevel)
+                self.silenceProgress = 0
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
@@ -269,8 +285,10 @@ final class ConversationService {
                 }
                 streamingTTS.endStream()
                 phase = .speaking
+                startSpeakingUpdates()
                 await streamingTTS.waitForPlaybackComplete()
                 streamingTTS.disconnect()
+                audioLevel = 0
             }
 
         } catch {
@@ -296,6 +314,7 @@ final class ConversationService {
 
         if hasTTS && !ttsConnected && !streamedText.isEmpty {
             phase = .speaking
+            startSpeakingUpdates()
             try await ttsPlayer.speak(
                 streamedText,
                 apiKey: config.elevenLabsAPIKey,

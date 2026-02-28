@@ -12,7 +12,11 @@ final class TTSPlayer {
 
     private(set) var isPlaying = false
 
+    private(set) var audioLevel: Float = 0
+
     private var audioPlayer: AVAudioPlayer?
+
+    private var meteringTimer: Timer?
 
     func speak(
         _ text: String,
@@ -50,7 +54,9 @@ final class TTSPlayer {
         }
 
         audioPlayer = try AVAudioPlayer(data: data)
+        audioPlayer?.isMeteringEnabled = true
         isPlaying = true
+        startMetering()
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let delegate = PlayerDelegate {
@@ -61,13 +67,42 @@ final class TTSPlayer {
             audioPlayer?.play()
         }
 
+        stopMetering()
         isPlaying = false
     }
 
     func stop() {
+        stopMetering()
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
+    }
+
+    private func startMetering() {
+        meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self, let player = self.audioPlayer, player.isPlaying else {
+                self?.audioLevel = 0
+                return
+            }
+            player.updateMeters()
+            let power = player.averagePower(forChannel: 0)
+            guard power.isFinite, power < 0 else {
+                self.audioLevel = 0
+                return
+            }
+            self.audioLevel = Self.normalizeDecibels(power)
+        }
+    }
+
+    private static func normalizeDecibels(_ db: Float) -> Float {
+        let linear = max(0, min(1, (db + 50) / 50))
+        return sqrt(linear)
+    }
+
+    private func stopMetering() {
+        meteringTimer?.invalidate()
+        meteringTimer = nil
+        audioLevel = 0
     }
 }
 

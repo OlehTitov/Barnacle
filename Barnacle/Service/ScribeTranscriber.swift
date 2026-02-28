@@ -319,7 +319,8 @@ final class ScribeTranscriber {
         }
         let rms = sqrt(sum / Float(max(frames, 1)))
         let db = 20 * log10(max(rms, 1e-10))
-        let normalized = max(0, min(1, (db + 60) / 60))
+        let linear = max(0, min(1, (db + 50) / 50))
+        let normalized = sqrt(linear)
 
         Task { @MainActor [weak self] in
             self?.audioLevel = normalized

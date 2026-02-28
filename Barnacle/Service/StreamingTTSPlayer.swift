@@ -11,9 +11,13 @@ import Foundation
 @Observable
 final class StreamingTTSPlayer {
 
+    private(set) var audioLevel: Float = 0
+
     private var scheduledChunkCount = 0
 
     private var completedChunkCount = 0
+
+    private var meteringTimer: Timer?
 
     private var chunkContinuation: AsyncStream<String>.Continuation?
 
@@ -61,6 +65,8 @@ final class StreamingTTSPlayer {
             }
             print("[TTS] Processing task done")
         }
+
+        startMetering()
     }
 
     func sendTextChunk(_ text: String) {
@@ -88,6 +94,10 @@ final class StreamingTTSPlayer {
 
     func disconnect() {
         print("[TTS] disconnect called")
+        meteringTimer?.invalidate()
+        meteringTimer = nil
+        audioLevel = 0
+
         chunkContinuation?.finish()
         chunkContinuation = nil
         processingTask?.cancel()
@@ -99,6 +109,28 @@ final class StreamingTTSPlayer {
 
         scheduledChunkCount = 0
         completedChunkCount = 0
+    }
+
+    private func startMetering() {
+        meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self, let player = self.currentPlayer, player.isPlaying else {
+                self?.audioLevel = 0
+                return
+            }
+            player.updateMeters()
+            let power = player.averagePower(forChannel: 0)
+            guard power.isFinite, power < 0 else {
+                self.audioLevel = 0
+                return
+            }
+            self.audioLevel = Self.normalizeDecibels(power)
+        }
+    }
+
+    private static func normalizeDecibels(_ db: Float) -> Float {
+        // Map -50 dB..0 dB to 0..1, apply sqrt for natural VU response
+        let linear = max(0, min(1, (db + 50) / 50))
+        return sqrt(linear)
     }
 
     private func fetchAndScheduleAudio(for text: String) async {
@@ -158,6 +190,7 @@ final class StreamingTTSPlayer {
         print("[TTS] scheduleAudioData called, data size: \(data.count) bytes")
         do {
             let player = try AVAudioPlayer(data: data)
+            player.isMeteringEnabled = true
             scheduledChunkCount += 1
             print("[TTS] Created player #\(scheduledChunkCount)")
 
