@@ -111,6 +111,7 @@ struct VoiceStep: View {
                     "Hello, I'm your assistant",
                     apiKey: apiKeyInput,
                     voiceID: voiceIDInput,
+                    modelID: TTSModel.v3.rawValue,
                     stability: TTSStability.natural.rawValue,
                     similarityBoost: 0.8,
                     style: 0.4

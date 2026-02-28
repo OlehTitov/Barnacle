@@ -13,7 +13,8 @@ enum OpenClawService {
         _ text: String,
         gatewayURL: String,
         token: String,
-        hasTTS: Bool = false
+        hasTTS: Bool = false,
+        ttsModel: TTSModel = .v3
     ) async throws -> String {
         guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
@@ -24,7 +25,7 @@ enum OpenClawService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
-        let instructions = buildInstructions(hasTTS: hasTTS)
+        let instructions = buildInstructions(hasTTS: hasTTS, ttsModel: ttsModel)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "input": "[System: \(instructions)]\n\n\(text)",
             "model": "openclaw:main",
@@ -68,7 +69,8 @@ enum OpenClawService {
         _ text: String,
         gatewayURL: String,
         token: String,
-        hasTTS: Bool = false
+        hasTTS: Bool = false,
+        ttsModel: TTSModel = .v3
     ) async throws -> AsyncThrowingStream<SSEEvent, Error> {
         guard let url = URL(string: "\(gatewayURL)/v1/responses") else {
             throw OpenClawError.invalidURL
@@ -79,7 +81,7 @@ enum OpenClawService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("agent:main:main", forHTTPHeaderField: "x-openclaw-session-key")
-        let instructions = buildInstructions(hasTTS: hasTTS)
+        let instructions = buildInstructions(hasTTS: hasTTS, ttsModel: ttsModel)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "input": "[System: \(instructions)]\n\n\(text)",
             "model": "openclaw:main",
@@ -169,14 +171,14 @@ enum OpenClawService {
         _ = try await sendMessage("ping", gatewayURL: gatewayURL, token: token)
     }
 
-    private static func buildInstructions(hasTTS: Bool) -> String {
+    private static func buildInstructions(hasTTS: Bool, ttsModel: TTSModel) -> String {
         var instructions = "You are on a live telephone call. User is speaking from a dedicated voice app and your response will be converted to speech. Talk exactly like you would on the phone — brief, natural, no filler. Keep responses under 30 words. If user says 3-5 words, reply with about 10 — not 50. Never monologue. No markdown, no lists, no asterisks, no special characters. If the topic is broad or complex, ask one clarifying question instead of giving a long answer."
 
-        if hasTTS {
+        if hasTTS && ttsModel == .v3 {
             instructions += " Your text will be processed by ElevenLabs TTS. You can use audio tags in square brackets for expressiveness: [laughs], [sighs], [whispers], [sarcastic], [excited], [curious]. Use ellipses (...) for pauses and CAPS for emphasis."
         }
 
-        print("[OpenClaw] hasTTS=\(hasTTS), instructions: \(instructions)")
+        print("[OpenClaw] hasTTS=\(hasTTS), ttsModel=\(ttsModel), instructions: \(instructions)")
         return instructions
     }
 

@@ -33,15 +33,19 @@ final class StreamingTTSPlayer {
 
     private var pendingPlayers: [AVAudioPlayer] = []
 
+    private var modelID = "eleven_v3"
+
     func connect(
         apiKey: String,
         voiceID: String,
+        modelID: String,
         stability: Double,
         similarityBoost: Double,
         style: Double
     ) {
         self.apiKey = apiKey
         self.voiceID = voiceID
+        self.modelID = modelID
         self.stability = stability
         self.similarityBoost = similarityBoost
         self.style = style
@@ -111,7 +115,7 @@ final class StreamingTTSPlayer {
 
         let body: [String: Any] = [
             "text": text,
-            "model_id": "eleven_v3",
+            "model_id": modelID,
             "voice_settings": [
                 "stability": stability,
                 "similarity_boost": similarityBoost,

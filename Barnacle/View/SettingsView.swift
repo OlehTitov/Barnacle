@@ -28,6 +28,9 @@ struct SettingsView: View {
     private var voiceID = ""
 
     @State
+    private var ttsModel: TTSModel = .v3
+
+    @State
     private var ttsStability: TTSStability = .natural
 
     @State
@@ -112,6 +115,12 @@ struct SettingsView: View {
                         .multilineTextAlignment(.trailing)
                 }
 
+                Picker("Model", selection: $ttsModel) {
+                    ForEach(TTSModel.allCases, id: \.self) { model in
+                        Text(model.label).tag(model)
+                    }
+                }
+
                 LabeledContent("Voice ID") {
                     TextField("Voice ID", text: $voiceID)
                         .autocorrectionDisabled()
@@ -185,6 +194,7 @@ struct SettingsView: View {
                     config.gatewayToken = gatewayToken
                     config.elevenLabsAPIKey = elevenLabsAPIKey
                     config.voiceID = voiceID
+                    config.ttsModel = ttsModel
                     config.ttsStability = ttsStability
                     config.ttsSimilarityBoost = similarityBoost
                     config.ttsStyle = style
@@ -205,6 +215,7 @@ struct SettingsView: View {
             gatewayToken = config.gatewayToken
             elevenLabsAPIKey = config.elevenLabsAPIKey
             voiceID = config.voiceID
+            ttsModel = config.ttsModel
             ttsStability = config.ttsStability
             similarityBoost = config.ttsSimilarityBoost
             style = config.ttsStyle
@@ -222,6 +233,7 @@ struct SettingsView: View {
                 try await GreetingCacheService.ensureCached(
                     apiKey: elevenLabsAPIKey,
                     voiceID: voiceID,
+                    modelID: ttsModel.rawValue,
                     stability: ttsStability.rawValue,
                     similarityBoost: similarityBoost,
                     style: style

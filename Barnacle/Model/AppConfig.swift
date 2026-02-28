@@ -14,6 +14,7 @@ final class AppConfig {
     var gatewayToken: String
     var elevenLabsAPIKey: String
     var voiceID: String
+    var ttsModel: TTSModel
     var ttsStability: TTSStability
     var ttsSimilarityBoost: Double
     var ttsStyle: Double
@@ -25,6 +26,9 @@ final class AppConfig {
     init() {
         self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
         self.voiceID = UserDefaults.standard.string(forKey: "voiceID") ?? ""
+        self.ttsModel = TTSModel(
+            rawValue: UserDefaults.standard.string(forKey: "ttsModel") ?? ""
+        ) ?? .v3
         self.ttsStability = TTSStability(rawValue: UserDefaults.standard.double(forKey: "ttsStability")) ?? .natural
         self.ttsSimilarityBoost = UserDefaults.standard.object(forKey: "ttsSimilarityBoost") != nil
             ? UserDefaults.standard.double(forKey: "ttsSimilarityBoost") : 0.8
@@ -66,6 +70,7 @@ final class AppConfig {
     func save() {
         UserDefaults.standard.set(gatewayURL, forKey: "gatewayURL")
         UserDefaults.standard.set(voiceID, forKey: "voiceID")
+        UserDefaults.standard.set(ttsModel.rawValue, forKey: "ttsModel")
         UserDefaults.standard.set(ttsStability.rawValue, forKey: "ttsStability")
         UserDefaults.standard.set(ttsSimilarityBoost, forKey: "ttsSimilarityBoost")
         UserDefaults.standard.set(ttsStyle, forKey: "ttsStyle")

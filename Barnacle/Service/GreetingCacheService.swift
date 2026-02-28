@@ -22,6 +22,7 @@ enum GreetingCacheService {
     static func ensureCached(
         apiKey: String,
         voiceID: String,
+        modelID: String,
         stability: Double,
         similarityBoost: Double,
         style: Double
@@ -38,7 +39,7 @@ enum GreetingCacheService {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "text": "Boom, I'm here",
-            "model_id": "eleven_v3",
+            "model_id": modelID,
             "voice_settings": [
                 "stability": stability,
                 "similarity_boost": similarityBoost,

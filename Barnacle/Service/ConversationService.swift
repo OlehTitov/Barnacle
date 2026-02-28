@@ -217,7 +217,8 @@ final class ConversationService {
                 finalText,
                 gatewayURL: config.gatewayURL,
                 token: config.gatewayToken,
-                hasTTS: hasTTS
+                hasTTS: hasTTS,
+                ttsModel: config.ttsModel
             )
 
             var chunkBuffer = TextChunkBuffer()
@@ -233,6 +234,7 @@ final class ConversationService {
                         streamingTTS.connect(
                             apiKey: config.elevenLabsAPIKey,
                             voiceID: config.voiceID,
+                            modelID: config.ttsModel.rawValue,
                             stability: config.ttsStability.rawValue,
                             similarityBoost: config.ttsSimilarityBoost,
                             style: config.ttsStyle
@@ -276,7 +278,8 @@ final class ConversationService {
                 finalText,
                 gatewayURL: config.gatewayURL,
                 token: config.gatewayToken,
-                hasTTS: hasTTS
+                hasTTS: hasTTS,
+                ttsModel: config.ttsModel
             )
             streamedText = response
             messages[messageIndex].text = response
@@ -290,6 +293,7 @@ final class ConversationService {
                 streamedText,
                 apiKey: config.elevenLabsAPIKey,
                 voiceID: config.voiceID,
+                modelID: config.ttsModel.rawValue,
                 stability: config.ttsStability.rawValue,
                 similarityBoost: config.ttsSimilarityBoost,
                 style: config.ttsStyle

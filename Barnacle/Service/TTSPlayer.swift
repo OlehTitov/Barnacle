@@ -18,6 +18,7 @@ final class TTSPlayer {
         _ text: String,
         apiKey: String,
         voiceID: String,
+        modelID: String,
         stability: Double,
         similarityBoost: Double,
         style: Double
@@ -32,7 +33,7 @@ final class TTSPlayer {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "text": text,
-            "model_id": "eleven_v3",
+            "model_id": modelID,
             "voice_settings": [
                 "stability": stability,
                 "similarity_boost": similarityBoost,
