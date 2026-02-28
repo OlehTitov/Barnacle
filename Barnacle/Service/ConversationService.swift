@@ -333,6 +333,7 @@ final class ConversationService {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
+        try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     }
 
     private func resetRecorders() {
