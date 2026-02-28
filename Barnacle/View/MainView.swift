@@ -144,9 +144,9 @@ struct MainView: View {
         HStack(spacing: 32) {
             PowerButtonView(appState: appState, action: { handleMicTap() })
 
-            VolumeControlView()
+            VolumeControlView(appState: appState)
 
-            SettingsButtonView(action: { showSettings = true })
+            SettingsButtonView(appState: appState, action: { showSettings = true })
         }
     }
 

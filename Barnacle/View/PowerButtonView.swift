@@ -13,25 +13,42 @@ struct PowerButtonView: View {
 
     let action: () -> Void
 
+    private let size = BarnacleTheme.controlButtonSize
+
     var body: some View {
         VStack(spacing: 8) {
             Button(action: action) {
                 ZStack {
                     Circle()
-                        .fill(BarnacleTheme.buttonSurface)
-                        .frame(
-                            width: BarnacleTheme.controlButtonSize,
-                            height: BarnacleTheme.controlButtonSize
+                        .fill(Color.black)
+                        .frame(width: size, height: size)
+
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [BarnacleTheme.buttonSurface, Color(red: 0.08, green: 0.09, blue: 0.11)],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: (size - 6) / 2
+                            )
                         )
+                        .frame(width: size - 6, height: size - 6)
                         .overlay(
                             Circle()
-                                .stroke(isActive ? BarnacleTheme.accent : BarnacleTheme.buttonBorder, lineWidth: 2)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color(white: 0.35), Color(white: 0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1.5
+                                )
                         )
-                        .shadow(color: isActive ? BarnacleTheme.accent.opacity(0.4) : .clear, radius: 8)
 
                     Image(systemName: "power")
                         .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(isActive ? BarnacleTheme.accent : BarnacleTheme.textPrimary)
+                        .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
+                        .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
                 }
             }
             .disabled(isDisabled)
@@ -42,12 +59,12 @@ struct PowerButtonView: View {
         }
     }
 
-    private var isActive: Bool {
+    private var isPoweredOn: Bool {
         switch appState {
-        case .recording:
-            true
-        default:
+        case .idle, .error:
             false
+        default:
+            true
         }
     }
 

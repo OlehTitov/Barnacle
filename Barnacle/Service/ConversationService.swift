@@ -71,6 +71,7 @@ final class ConversationService {
 
         resetRecorders()
         scribeTranscriber.stopEngine()
+        phase = .idle
     }
 
     func stopListening() {
