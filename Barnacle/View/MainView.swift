@@ -39,75 +39,113 @@ struct MainView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                BarnacleTheme.background.ignoresSafeArea()
+        ZStack {
+            BarnacleTheme.background.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    ConversationView(messages: conversation.messages)
+            VStack(spacing: 0) {
+                topBar
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
 
-                    if !conversation.liveTranscript.isEmpty {
-                        Text(conversation.liveTranscript)
-                            .font(BarnacleTheme.monoCaption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
-                    }
+                displayPanel
 
-                    if case .error(let message) = appState {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .padding(.horizontal)
-                            .padding(.top, 4)
-                    }
+                Spacer()
 
-                    Spacer()
+                controlBar
+                    .padding()
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+            }
+        }
+        .overlay {
+            if config.transcriptionEngine == .fluid && !fluidModels.isReady {
+                ModelDownloadView(
+                    isPreparing: fluidModels.isPreparing,
+                    errorMessage: fluidModels.errorMessage,
+                    retryAction: { Task { await fluidModels.prepareIfNeeded(using: conversation) } }
+                )
+            }
+        }
+        .task(id: config.transcriptionEngine) {
+            if config.transcriptionEngine == .fluid {
+                await fluidModels.prepareIfNeeded(using: conversation)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .barnacleIntentTriggered)) { _ in
+            guard config.transcriptionEngine != .fluid || fluidModels.isReady else { return }
+            Task { await conversation.runTurn(config: config, playGreeting: true) }
+        }
+    }
 
-                    MicButtonView(
-                        appState: appState,
-                        audioLevel: conversation.audioLevel,
-                        silenceProgress: conversation.silenceProgress,
-                        action: { handleMicTap() }
-                    )
-                    .padding(.bottom, 40)
-                }
+    private var topBar: some View {
+        HStack {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("BARNACLE")
+                    .font(BarnacleTheme.monoTitle)
+                    .foregroundStyle(BarnacleTheme.textPrimary)
+
+                Text("v\(appVersion)")
+                    .font(BarnacleTheme.monoCaption)
+                    .foregroundStyle(BarnacleTheme.textPrimary.opacity(0.5))
             }
-            .navigationTitle("Barnacle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gear")
-                    }
-                }
+
+            Spacer()
+
+            DotMatrixView()
+
+            Spacer()
+
+            StatusLedView(appState: appState)
+        }
+    }
+
+    private var displayPanel: some View {
+        VStack(spacing: 0) {
+            ConversationView(
+                messages: conversation.messages,
+                liveTranscript: conversation.liveTranscript
+            )
+
+            if case .error(let message) = appState {
+                Text(message)
+                    .font(BarnacleTheme.monoCaption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
             }
-            .sheet(isPresented: $showSettings) {
-                NavigationStack {
-                    SettingsView()
-                }
-            }
-            .overlay {
-                if config.transcriptionEngine == .fluid && !fluidModels.isReady {
-                    ModelDownloadView(
-                        isPreparing: fluidModels.isPreparing,
-                        errorMessage: fluidModels.errorMessage,
-                        retryAction: { Task { await fluidModels.prepareIfNeeded(using: conversation) } }
-                    )
-                }
-            }
-            .task(id: config.transcriptionEngine) {
-                if config.transcriptionEngine == .fluid {
-                    await fluidModels.prepareIfNeeded(using: conversation)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .barnacleIntentTriggered)) { _ in
-                guard config.transcriptionEngine != .fluid || fluidModels.isReady else { return }
-                Task { await conversation.runTurn(config: config, playGreeting: true) }
-            }
+
+            Spacer(minLength: 0)
+
+            AudioLevelBarView(
+                audioLevel: conversation.audioLevel,
+                silenceProgress: conversation.silenceProgress,
+                appState: appState
+            )
+            .padding(.bottom, 16)
+            .padding(.horizontal, 16)
+        }
+        .frame(maxWidth: .infinity)
+        .background(BarnacleTheme.displayBackground)
+        .clipShape(RoundedRectangle(cornerRadius: BarnacleTheme.displayCornerRadius))
+        .padding(.horizontal, 16)
+    }
+
+    private var controlBar: some View {
+        HStack(spacing: 32) {
+            PowerButtonView(appState: appState, action: { handleMicTap() })
+
+            VolumeControlView()
+
+            SettingsButtonView(action: { showSettings = true })
         }
     }
 

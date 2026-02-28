@@ -22,7 +22,7 @@ struct BarnacleApp: App {
                     OnboardingFlow()
                 }
             }
-            .tint(BarnacleTheme.coral)
+            .tint(BarnacleTheme.accent)
             .preferredColorScheme(.dark)
         }
         .environment(config)

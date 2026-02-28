@@ -52,9 +52,7 @@ final class ConversationService {
 
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     resetRecorders()
-                    scribeTranscriber.stopEngine()
-                    phase = .idle
-                    return
+                    continue
                 }
 
                 try await sendToOpenClaw(finalText, config: config)

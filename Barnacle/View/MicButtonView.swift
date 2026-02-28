@@ -22,7 +22,7 @@ struct MicButtonView: View {
             ZStack {
                 if isRecording && !reduceMotion {
                     Circle()
-                        .fill(BarnacleTheme.coral.opacity(0.15))
+                        .fill(BarnacleTheme.accent.opacity(0.15))
                         .frame(width: glowSize, height: glowSize)
                         .blur(radius: 20)
                 }
@@ -30,16 +30,16 @@ struct MicButtonView: View {
                 if isRecording {
                     SilenceRingView(progress: silenceProgress)
                         .frame(
-                            width: BarnacleTheme.micButtonSize + 16,
-                            height: BarnacleTheme.micButtonSize + 16
+                            width: 120 as CGFloat + 16,
+                            height: 120 as CGFloat + 16
                         )
                 }
 
                 Circle()
                     .fill(buttonColor)
                     .frame(
-                        width: BarnacleTheme.micButtonSize,
-                        height: BarnacleTheme.micButtonSize
+                        width: 120 as CGFloat,
+                        height: 120 as CGFloat
                     )
                     .shadow(
                         color: buttonColor.opacity(0.4),
@@ -48,7 +48,7 @@ struct MicButtonView: View {
                     .scaleEffect(isRecording && !reduceMotion ? 1.05 : 1.0)
 
                 MicIconView(appState: appState)
-                    .font(.system(size: BarnacleTheme.micIconSize))
+                    .font(.system(size: 44 as CGFloat))
                     .foregroundStyle(.white)
             }
         }
@@ -65,17 +65,17 @@ struct MicButtonView: View {
 
     private var buttonColor: Color {
         switch appState {
-        case .idle: BarnacleTheme.coral
-        case .recording: BarnacleTheme.coral
-        case .processing: BarnacleTheme.coral.opacity(0.6)
-        case .streaming: BarnacleTheme.coral.opacity(0.6)
-        case .speaking: BarnacleTheme.coral.opacity(0.6)
+        case .idle: BarnacleTheme.accent
+        case .recording: BarnacleTheme.accent
+        case .processing: BarnacleTheme.accent.opacity(0.6)
+        case .streaming: BarnacleTheme.accent.opacity(0.6)
+        case .speaking: BarnacleTheme.accent.opacity(0.6)
         case .error: .red.opacity(0.6)
         }
     }
 
     private var glowSize: CGFloat {
-        BarnacleTheme.micButtonSize + CGFloat(audioLevel) * 60
+        120 as CGFloat + CGFloat(audioLevel) * 60
     }
 
     private var isRecording: Bool {

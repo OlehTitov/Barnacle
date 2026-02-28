@@ -125,21 +125,20 @@ final class ScribeTranscriber {
             self.updateAudioLevel(buffer: pcm)
             chunkCount += 1
 
-            Self.convertAndAccumulate(
+            guard let samples = Self.convertToFloat(
                 buffer: pcm,
                 converter: converter,
-                targetFormat: tFormat,
-                sampleBuffer: buffer
-            )
+                targetFormat: tFormat
+            ) else { return }
+
+            buffer.append(samples)
 
             guard self.webSocketTask != nil else { return }
             if chunkCount <= 3 || chunkCount % 50 == 0 {
-                print("[Scribe] tap #\(chunkCount): bufferFrames=\(pcm.frameLength)")
+                print("[Scribe] tap #\(chunkCount): bufferFrames=\(pcm.frameLength), converted=\(samples.count)")
             }
-            Self.convertAndSend(
-                buffer: pcm,
-                converter: converter,
-                targetFormat: tFormat,
+            Self.sendSamples(
+                samples,
                 webSocketTask: self.webSocketTask,
                 chunkIndex: chunkCount
             )
@@ -287,11 +286,14 @@ final class ScribeTranscriber {
             case "committed_transcript":
                 if let segment = json["text"] as? String {
                     print("[Scribe] committed: \"\(segment)\"")
-                    self.committedText += (self.committedText.isEmpty ? "" : " ") + segment
+                    let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        self.committedText += (self.committedText.isEmpty ? "" : " ") + segment
+                        self.displayText = self.committedText
+                        self.hasCommittedText = true
+                    }
                     self.currentPartial = ""
-                    self.displayText = self.committedText
                     self.lastScribeActivityDate = Date()
-                    self.hasCommittedText = true
                 }
             default:
                 print("[Scribe] unhandled message_type: \(messageType), json=\(json)")
@@ -317,18 +319,17 @@ final class ScribeTranscriber {
         }
     }
 
-    private nonisolated static func convertAndAccumulate(
+    private nonisolated static func convertToFloat(
         buffer: AVAudioPCMBuffer,
         converter: AVAudioConverter,
-        targetFormat: AVAudioFormat,
-        sampleBuffer: AudioSampleBuffer
-    ) {
+        targetFormat: AVAudioFormat
+    ) -> [Float]? {
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
         guard let convertedBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,
             frameCapacity: frameCount
-        ) else { return }
+        ) else { return nil }
 
         var inputProvided = false
         var error: NSError?
@@ -344,67 +345,27 @@ final class ScribeTranscriber {
 
         guard error == nil, convertedBuffer.frameLength > 0,
               let floatData = convertedBuffer.floatChannelData?[0]
-        else { return }
+        else { return nil }
 
         let count = Int(convertedBuffer.frameLength)
         var samples = [Float](repeating: 0, count: count)
         for i in 0..<count {
             samples[i] = floatData[i]
         }
-
-        sampleBuffer.append(samples)
+        return samples
     }
 
-    private nonisolated static func convertAndSend(
-        buffer: AVAudioPCMBuffer,
-        converter: AVAudioConverter,
-        targetFormat: AVAudioFormat,
+    private nonisolated static func sendSamples(
+        _ samples: [Float],
         webSocketTask: URLSessionWebSocketTask?,
         chunkIndex: Int = 0
     ) {
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-        let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-        guard let convertedBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
-            frameCapacity: frameCount
-        ) else {
-            print("[Scribe] convertAndSend: failed to create convertedBuffer")
-            return
-        }
-
-        var inputProvided = false
-        var error: NSError?
-        converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-            if inputProvided {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            inputProvided = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-
-        if let error {
-            print("[Scribe] convertAndSend: converter error: \(error)")
-            return
-        }
-        guard convertedBuffer.frameLength > 0 else {
-            if chunkIndex <= 3 {
-                print("[Scribe] convertAndSend: 0 frames after conversion")
-            }
-            return
-        }
-        guard let floatData = convertedBuffer.floatChannelData?[0] else {
-            print("[Scribe] convertAndSend: no float channel data")
-            return
-        }
-
-        let count = Int(convertedBuffer.frameLength)
+        let count = samples.count
         var int16Data = Data(count: count * 2)
         int16Data.withUnsafeMutableBytes { rawPtr in
             let ptr = rawPtr.bindMemory(to: Int16.self)
             for i in 0..<count {
-                let sample = max(-1.0, min(1.0, floatData[i]))
+                let sample = max(-1.0, min(1.0, samples[i]))
                 ptr[i] = Int16(sample * Float(Int16.max))
             }
         }

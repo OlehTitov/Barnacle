@@ -47,7 +47,7 @@ struct OnboardingFlow: View {
                         Circle()
                             .fill(
                                 index == currentStep
-                                    ? BarnacleTheme.coral
+                                    ? BarnacleTheme.accent
                                     : Color.secondary.opacity(0.3)
                             )
                             .frame(width: 8, height: 8)

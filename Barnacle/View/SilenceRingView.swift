@@ -15,7 +15,7 @@ struct SilenceRingView: View {
         Circle()
             .trim(from: 0, to: 1 - progress)
             .stroke(
-                BarnacleTheme.coral.opacity(0.6),
+                BarnacleTheme.accent.opacity(0.6),
                 style: StrokeStyle(lineWidth: 3, lineCap: .round)
             )
             .rotationEffect(.degrees(-90))

@@ -20,7 +20,7 @@ struct ModelDownloadView: View {
             if isPreparing {
                 ProgressView()
                     .controlSize(.large)
-                    .tint(BarnacleTheme.coral)
+                    .tint(BarnacleTheme.accent)
 
                 Text("Preparing speech engine")
                     .font(BarnacleTheme.monoBody)
@@ -28,7 +28,7 @@ struct ModelDownloadView: View {
             } else if let errorMessage {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 40))
-                    .foregroundStyle(BarnacleTheme.coral)
+                    .foregroundStyle(BarnacleTheme.accent)
 
                 Text("Model download failed")
                     .font(BarnacleTheme.monoBody)
@@ -42,7 +42,7 @@ struct ModelDownloadView: View {
 
                 Button("Retry", action: retryAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(BarnacleTheme.coral)
+                    .tint(BarnacleTheme.accent)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
