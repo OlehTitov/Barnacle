@@ -10,34 +10,6 @@ import CoreML
 import FluidAudio
 import Foundation
 
-private final class AudioSampleBuffer: @unchecked Sendable {
-
-    private let lock = NSLock()
-
-    nonisolated(unsafe) private var samples: [Float] = []
-
-    nonisolated func append(_ newSamples: [Float]) {
-        lock.lock()
-        defer { lock.unlock() }
-        samples.append(contentsOf: newSamples)
-    }
-
-    nonisolated func drain(size: Int) -> [Float]? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard samples.count >= size else { return nil }
-        let chunk = Array(samples.prefix(size))
-        samples.removeFirst(size)
-        return chunk
-    }
-
-    nonisolated func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        samples.removeAll()
-    }
-}
-
 @Observable
 final class FluidTranscriber {
 
@@ -139,14 +111,7 @@ final class FluidTranscriber {
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.outputFormat(forBus: 0)
 
-        guard let tFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16000,
-            channels: 1,
-            interleaved: false
-        ) else {
-            return
-        }
+        let tFormat = AudioUtilities.transcriptionFormat
         targetFormat = tFormat
 
         guard let converter = AVAudioConverter(
@@ -162,13 +127,15 @@ final class FluidTranscriber {
         let buffer = sampleBuffer
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] pcm, _ in
             guard let self else { return }
-            self.updateAudioLevel(buffer: pcm)
-            Self.convertAndAccumulate(
+            let level = AudioUtilities.audioLevel(from: pcm)
+            Task { @MainActor [weak self] in self?.audioLevel = level }
+            if let samples = AudioUtilities.convertToMono16kHz(
                 buffer: pcm,
                 converter: converter,
-                targetFormat: tFormat,
-                sampleBuffer: buffer
-            )
+                targetFormat: tFormat
+            ) {
+                buffer.append(samples)
+            }
         }
 
         audioEngine.prepare()
@@ -217,62 +184,6 @@ final class FluidTranscriber {
         audioLevel = 0
         silenceProgress = 0
         isSpeechActive = false
-    }
-
-    private nonisolated func updateAudioLevel(buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frames = Int(buffer.frameLength)
-        var sum: Float = 0
-        for i in 0..<frames {
-            let sample = channelData[i]
-            sum += sample * sample
-        }
-        let rms = sqrt(sum / Float(max(frames, 1)))
-        let db = 20 * log10(max(rms, 1e-10))
-        let linear = max(0, min(1, (db + 50) / 50))
-        let normalized = sqrt(linear)
-
-        Task { @MainActor [weak self] in
-            self?.audioLevel = normalized
-        }
-    }
-
-    private nonisolated static func convertAndAccumulate(
-        buffer: AVAudioPCMBuffer,
-        converter: AVAudioConverter,
-        targetFormat: AVAudioFormat,
-        sampleBuffer: AudioSampleBuffer
-    ) {
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-        let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-        guard let convertedBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
-            frameCapacity: frameCount
-        ) else { return }
-
-        var inputProvided = false
-        var error: NSError?
-        converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-            if inputProvided {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            inputProvided = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-
-        guard error == nil, convertedBuffer.frameLength > 0,
-              let floatData = convertedBuffer.floatChannelData?[0]
-        else { return }
-
-        let count = Int(convertedBuffer.frameLength)
-        var samples = [Float](repeating: 0, count: count)
-        for i in 0..<count {
-            samples[i] = floatData[i]
-        }
-
-        sampleBuffer.append(samples)
     }
 
     private func processAudioLoop() async {

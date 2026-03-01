@@ -123,14 +123,8 @@ final class StreamingTTSPlayer {
                 self.audioLevel = 0
                 return
             }
-            self.audioLevel = Self.normalizeDecibels(power)
+            self.audioLevel = AudioUtilities.normalizeDecibels(power)
         }
-    }
-
-    private static func normalizeDecibels(_ db: Float) -> Float {
-        // Map -50 dB..0 dB to 0..1, apply sqrt for natural VU response
-        let linear = max(0, min(1, (db + 50) / 50))
-        return sqrt(linear)
     }
 
     private func fetchAndScheduleAudio(for text: String) async {
@@ -206,7 +200,7 @@ final class StreamingTTSPlayer {
     }
 
     private func playChunk(_ player: AVAudioPlayer) {
-        let delegate = ChunkPlayerDelegate { [weak self] in
+        let delegate = AudioPlayerFinishDelegate { [weak self] in
             DispatchQueue.main.async {
                 self?.onChunkFinished()
             }
@@ -228,18 +222,5 @@ final class StreamingTTSPlayer {
         } else {
             currentPlayer = nil
         }
-    }
-}
-
-private class ChunkPlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
-
-    let onFinish: () -> Void
-
-    init(onFinish: @escaping () -> Void) {
-        self.onFinish = onFinish
-    }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        onFinish()
     }
 }

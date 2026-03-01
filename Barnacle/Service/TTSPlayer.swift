@@ -62,7 +62,7 @@ final class TTSPlayer {
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             playbackContinuation = continuation
-            let delegate = PlayerDelegate { [weak self] in
+            let delegate = AudioPlayerFinishDelegate { [weak self] in
                 self?.playbackContinuation = nil
                 continuation.resume()
             }
@@ -96,31 +96,13 @@ final class TTSPlayer {
                 self.audioLevel = 0
                 return
             }
-            self.audioLevel = Self.normalizeDecibels(power)
+            self.audioLevel = AudioUtilities.normalizeDecibels(power)
         }
-    }
-
-    private static func normalizeDecibels(_ db: Float) -> Float {
-        let linear = max(0, min(1, (db + 50) / 50))
-        return sqrt(linear)
     }
 
     private func stopMetering() {
         meteringTimer?.invalidate()
         meteringTimer = nil
         audioLevel = 0
-    }
-}
-
-private class PlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
-
-    let onFinish: () -> Void
-
-    init(onFinish: @escaping () -> Void) {
-        self.onFinish = onFinish
-    }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        onFinish()
     }
 }

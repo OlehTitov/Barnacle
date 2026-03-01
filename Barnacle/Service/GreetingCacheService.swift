@@ -62,25 +62,12 @@ enum GreetingCacheService {
         let player = try AVAudioPlayer(contentsOf: cachedFileURL)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let delegate = GreetingPlayerDelegate {
+            let delegate = AudioPlayerFinishDelegate {
                 continuation.resume()
             }
             player.delegate = delegate
             objc_setAssociatedObject(player, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
             player.play()
         }
-    }
-}
-
-private class GreetingPlayerDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
-
-    let onFinish: () -> Void
-
-    init(onFinish: @escaping () -> Void) {
-        self.onFinish = onFinish
-    }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        onFinish()
     }
 }

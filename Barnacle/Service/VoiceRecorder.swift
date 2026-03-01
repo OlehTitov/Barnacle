@@ -123,8 +123,7 @@ final class VoiceRecorder {
         }
         let rms = sqrt(sum / Float(max(frames, 1)))
         let db = 20 * log10(max(rms, 1e-10))
-        let linear = max(0, min(1, (db + 50) / 50))
-        let normalized = sqrt(linear)
+        let normalized = AudioUtilities.normalizeDecibels(db)
 
         Task { @MainActor [weak self] in
             guard let self else { return }
