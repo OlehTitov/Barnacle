@@ -126,10 +126,14 @@ struct MainView: View {
 
         switch conversation.phase {
         case .idle, .finished, .failed:
-            SFXPlayer.play("power-on")
+            SFXPlayer.play("startup")
             Task { await conversation.runTurn(config: config) }
         default:
-            conversation.stopListening()
+            SFXPlayer.play("power-off")
+            Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                conversation.stopListening()
+            }
         }
     }
 }
