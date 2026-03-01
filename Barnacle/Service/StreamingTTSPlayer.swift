@@ -23,36 +23,14 @@ final class StreamingTTSPlayer {
 
     private var processingTask: Task<Void, Never>?
 
-    private var apiKey = ""
-
-    private var voiceID = ""
-
-    private var stability: Double = 0.5
-
-    private var similarityBoost: Double = 0.8
-
-    private var style: Double = 0.4
+    private var config: TTSConfig?
 
     private var currentPlayer: AVAudioPlayer?
 
     private var pendingPlayers: [AVAudioPlayer] = []
 
-    private var modelID = "eleven_v3"
-
-    func connect(
-        apiKey: String,
-        voiceID: String,
-        modelID: String,
-        stability: Double,
-        similarityBoost: Double,
-        style: Double
-    ) {
-        self.apiKey = apiKey
-        self.voiceID = voiceID
-        self.modelID = modelID
-        self.stability = stability
-        self.similarityBoost = similarityBoost
-        self.style = style
+    func connect(config: TTSConfig) {
+        self.config = config
 
         let (stream, continuation) = AsyncStream.makeStream(of: String.self)
         chunkContinuation = continuation
@@ -129,7 +107,11 @@ final class StreamingTTSPlayer {
 
     private func fetchAndScheduleAudio(for text: String) async {
         print("[TTS] fetchAndScheduleAudio called for: \(text.prefix(30))...")
-        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)/stream") else {
+        guard let config else {
+            print("[TTS] No config set")
+            return
+        }
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)/stream") else {
             print("[TTS] Invalid URL")
             return
         }
@@ -137,15 +119,15 @@ final class StreamingTTSPlayer {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
 
         let body: [String: Any] = [
             "text": text,
-            "model_id": modelID,
+            "model_id": config.modelID,
             "voice_settings": [
-                "stability": stability,
-                "similarity_boost": similarityBoost,
-                "style": style
+                "stability": config.stability,
+                "similarity_boost": config.similarityBoost,
+                "style": config.style
             ]
         ]
 

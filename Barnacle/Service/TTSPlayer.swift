@@ -22,28 +22,23 @@ final class TTSPlayer {
 
     func speak(
         _ text: String,
-        apiKey: String,
-        voiceID: String,
-        modelID: String,
-        stability: Double,
-        similarityBoost: Double,
-        style: Double
+        config: TTSConfig
     ) async throws {
-        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)") else {
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)") else {
             throw TTSError.invalidVoiceID
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "text": text,
-            "model_id": modelID,
+            "model_id": config.modelID,
             "voice_settings": [
-                "stability": stability,
-                "similarity_boost": similarityBoost,
-                "style": style
+                "stability": config.stability,
+                "similarity_boost": config.similarityBoost,
+                "style": config.style
             ]
         ])
 

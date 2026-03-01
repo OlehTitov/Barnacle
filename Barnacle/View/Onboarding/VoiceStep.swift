@@ -109,12 +109,14 @@ struct VoiceStep: View {
             do {
                 try await ttsPlayer.speak(
                     "Hello, I'm your assistant",
-                    apiKey: apiKeyInput,
-                    voiceID: voiceIDInput,
-                    modelID: TTSModel.v3.rawValue,
-                    stability: TTSStability.natural.rawValue,
-                    similarityBoost: 0.8,
-                    style: 0.4
+                    config: TTSConfig(
+                        apiKey: apiKeyInput,
+                        voiceID: voiceIDInput,
+                        modelID: TTSModel.v3.rawValue,
+                        stability: TTSStability.natural.rawValue,
+                        similarityBoost: 0.8,
+                        style: 0.4
+                    )
                 )
                 testResult = .success
             } catch {

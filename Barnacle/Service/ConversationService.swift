@@ -256,14 +256,7 @@ final class ConversationService {
 
                     if hasTTS && !ttsConnected {
                         ttsConnected = true
-                        streamingTTS.connect(
-                            apiKey: config.elevenLabsAPIKey,
-                            voiceID: config.voiceID,
-                            modelID: config.ttsModel.rawValue,
-                            stability: config.ttsStability.rawValue,
-                            similarityBoost: config.ttsSimilarityBoost,
-                            style: config.ttsStyle
-                        )
+                        streamingTTS.connect(config: config.ttsConfig)
                     }
 
                     if ttsConnected {
@@ -319,12 +312,7 @@ final class ConversationService {
             startSpeakingUpdates()
             try await ttsPlayer.speak(
                 streamedText,
-                apiKey: config.elevenLabsAPIKey,
-                voiceID: config.voiceID,
-                modelID: config.ttsModel.rawValue,
-                stability: config.ttsStability.rawValue,
-                similarityBoost: config.ttsSimilarityBoost,
-                style: config.ttsStyle
+                config: config.ttsConfig
             )
         }
     }

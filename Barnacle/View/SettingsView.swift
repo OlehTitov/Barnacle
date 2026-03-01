@@ -270,12 +270,14 @@ struct SettingsView: View {
         Task {
             do {
                 try await GreetingCacheService.ensureCached(
-                    apiKey: elevenLabsAPIKey,
-                    voiceID: voiceID,
-                    modelID: ttsModel.rawValue,
-                    stability: ttsStability.rawValue,
-                    similarityBoost: similarityBoost,
-                    style: style
+                    config: TTSConfig(
+                        apiKey: elevenLabsAPIKey,
+                        voiceID: voiceID,
+                        modelID: ttsModel.rawValue,
+                        stability: ttsStability.rawValue,
+                        similarityBoost: similarityBoost,
+                        style: style
+                    )
                 )
                 greetingStatus = "Cached"
             } catch {

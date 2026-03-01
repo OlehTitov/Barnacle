@@ -77,6 +77,17 @@ final class AppConfig {
         }
     }
 
+    var ttsConfig: TTSConfig {
+        TTSConfig(
+            apiKey: elevenLabsAPIKey,
+            voiceID: voiceID,
+            modelID: ttsModel.rawValue,
+            stability: ttsStability.rawValue,
+            similarityBoost: ttsSimilarityBoost,
+            style: ttsStyle
+        )
+    }
+
     func save() {
         UserDefaults.standard.set(gatewayURL, forKey: "gatewayURL")
         UserDefaults.standard.set(voiceID, forKey: "voiceID")
