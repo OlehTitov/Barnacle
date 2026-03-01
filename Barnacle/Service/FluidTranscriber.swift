@@ -23,6 +23,8 @@ final class FluidTranscriber {
 
     private(set) var finalTranscript: String = ""
 
+    var onSystemLog: ((String) -> Void)?
+
     private var vadManager: VadManager?
     private var vadState: VadStreamState?
     private var asrManager: StreamingEouAsrManager?
@@ -245,7 +247,7 @@ final class FluidTranscriber {
                 _ = try await asrManager?.process(audioBuffer: pcmBuffer)
             }
         } catch {
-            print("[FluidTranscriber] VAD/ASR error: \(error)")
+            onSystemLog?("Fluid error: \(error.localizedDescription)")
         }
     }
 

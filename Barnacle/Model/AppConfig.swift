@@ -27,6 +27,8 @@ final class AppConfig {
     var displayAllCaps: Bool
     var visualTheme: VisualTheme
 
+    var showDebugMessages: Bool
+
     init() {
         self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
         self.voiceID = UserDefaults.standard.string(forKey: "voiceID") ?? ""
@@ -55,6 +57,7 @@ final class AppConfig {
         self.visualTheme = VisualTheme(
             rawValue: UserDefaults.standard.string(forKey: "visualTheme") ?? ""
         ) ?? .midnight
+        self.showDebugMessages = UserDefaults.standard.bool(forKey: "showDebugMessages")
 
         if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
@@ -106,6 +109,7 @@ final class AppConfig {
         UserDefaults.standard.set(displayFontSize, forKey: "displayFontSize")
         UserDefaults.standard.set(displayAllCaps, forKey: "displayAllCaps")
         UserDefaults.standard.set(visualTheme.rawValue, forKey: "visualTheme")
+        UserDefaults.standard.set(showDebugMessages, forKey: "showDebugMessages")
 
         if let data = gatewayToken.data(using: .utf8) {
             KeychainStore.save(key: "gatewayToken", data: data)

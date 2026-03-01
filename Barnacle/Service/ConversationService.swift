@@ -36,6 +36,10 @@ final class ConversationService {
 
     private var stopRequested = false
 
+    private func systemLog(_ text: String) {
+        messages.append(MessageModel(role: .system, text: text))
+    }
+
     func prepareFluidModels() async throws {
         try await fluidTranscriber.loadModels()
     }
@@ -46,11 +50,16 @@ final class ConversationService {
 
     func runTurn(config: AppConfig, playGreeting: Bool = false) async {
         stopRequested = false
+        scribeTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
+        streamingTTS.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
+        fluidTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         do {
             try activateAudioSession()
+            systemLog("Audio session active")
 
             if playGreeting && GreetingCacheService.isCached {
                 phase = .greeting
+                systemLog("Playing greeting")
                 try await GreetingCacheService.playGreeting()
             }
 
@@ -66,11 +75,13 @@ final class ConversationService {
                 resetRecorders()
             }
         } catch {
+            systemLog("Error: \(error.localizedDescription)")
             phase = .failed(error.localizedDescription)
         }
 
         resetRecorders()
         scribeTranscriber.stopEngine()
+        systemLog("Stopped")
         phase = .idle
     }
 
@@ -99,6 +110,7 @@ final class ConversationService {
         }
 
         phase = .listening
+        systemLog("Listening (\(config.transcriptionEngine.label))...")
 
         switch config.transcriptionEngine {
         case .fluid:
@@ -228,6 +240,7 @@ final class ConversationService {
     private func sendToOpenClaw(_ finalText: String, config: AppConfig) async throws {
         messages.append(MessageModel(role: .user, text: finalText))
         phase = .processing
+        systemLog("Sending to agent...")
 
         let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
         var streamedText = ""
@@ -246,6 +259,7 @@ final class ConversationService {
                 ttsModel: config.ttsModel
             )
 
+            systemLog("Streaming response...")
             var chunkBuffer = TextChunkBuffer()
 
             for try await event in stream {
@@ -280,9 +294,11 @@ final class ConversationService {
                 }
                 streamingTTS.endStream()
                 phase = .speaking
+                systemLog("Speaking...")
                 startSpeakingUpdates()
                 await streamingTTS.waitForPlaybackComplete()
                 streamingTTS.disconnect()
+                systemLog("Playback complete")
                 audioLevel = 0
             }
 
@@ -293,6 +309,7 @@ final class ConversationService {
         }
 
         if streamingRequestFailed && streamedText.isEmpty {
+            systemLog("Stream failed, retrying...")
             phase = .processing
             let response = try await OpenClawService.sendMessage(
                 finalText,
@@ -309,6 +326,7 @@ final class ConversationService {
 
         if hasTTS && !ttsConnected && !streamedText.isEmpty {
             phase = .speaking
+            systemLog("Speaking...")
             startSpeakingUpdates()
             try await ttsPlayer.speak(
                 streamedText,

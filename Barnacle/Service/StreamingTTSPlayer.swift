@@ -13,6 +13,8 @@ final class StreamingTTSPlayer {
 
     private(set) var audioLevel: Float = 0
 
+    var onSystemLog: ((String) -> Void)?
+
     private var scheduledChunkCount = 0
 
     private var completedChunkCount = 0
@@ -36,42 +38,35 @@ final class StreamingTTSPlayer {
         chunkContinuation = continuation
 
         processingTask = Task { [weak self] in
-            print("[TTS] Processing task started")
             for await chunk in stream {
-                print("[TTS] Dequeued chunk: \(chunk.prefix(30))...")
                 await self?.fetchAndScheduleAudio(for: chunk)
             }
-            print("[TTS] Processing task done")
         }
 
+        onSystemLog?("TTS connected")
         startMetering()
     }
 
     func sendTextChunk(_ text: String) {
-        print("[TTS] sendTextChunk: \(text.prefix(40))...")
         chunkContinuation?.yield(text)
     }
 
     func endStream() {
-        print("[TTS] endStream called")
         chunkContinuation?.finish()
         chunkContinuation = nil
     }
 
     func waitForPlaybackComplete() async {
-        print("[TTS] waitForPlaybackComplete: waiting for processingTask...")
         await processingTask?.value
-        print("[TTS] processingTask done. scheduled=\(scheduledChunkCount), completed=\(completedChunkCount)")
 
         let deadline = Date().addingTimeInterval(30)
         while completedChunkCount < scheduledChunkCount, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
-        print("[TTS] waitForPlaybackComplete finished. completed=\(completedChunkCount)/\(scheduledChunkCount)")
+        onSystemLog?("TTS done \(completedChunkCount)/\(scheduledChunkCount)")
     }
 
     func disconnect() {
-        print("[TTS] disconnect called")
         meteringTimer?.invalidate()
         meteringTimer = nil
         audioLevel = 0
@@ -106,15 +101,8 @@ final class StreamingTTSPlayer {
     }
 
     private func fetchAndScheduleAudio(for text: String) async {
-        print("[TTS] fetchAndScheduleAudio called for: \(text.prefix(30))...")
-        guard let config else {
-            print("[TTS] No config set")
-            return
-        }
-        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)/stream") else {
-            print("[TTS] Invalid URL")
-            return
-        }
+        guard let config else { return }
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)/stream") else { return }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -131,44 +119,32 @@ final class StreamingTTSPlayer {
             ]
         ]
 
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
-            print("[TTS] JSON serialization failed")
-            return
-        }
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
         request.httpBody = httpBody
 
         do {
-            print("[TTS] Sending HTTP request to ElevenLabs...")
             let (data, response) = try await URLSession.shared.data(for: request)
 
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[TTS] Not an HTTP response")
-                return
-            }
-
-            print("[TTS] HTTP status: \(httpResponse.statusCode), data size: \(data.count) bytes")
+            guard let httpResponse = response as? HTTPURLResponse else { return }
 
             guard (200...299).contains(httpResponse.statusCode) else {
-                if let errorBody = String(data: data, encoding: .utf8) {
-                    print("[TTS] Error body: \(errorBody.prefix(200))")
-                }
+                onSystemLog?("TTS HTTP \(httpResponse.statusCode)")
                 return
             }
 
             scheduleAudioData(data)
         } catch {
-            print("[TTS] HTTP error: \(error)")
+            onSystemLog?("TTS error: \(error.localizedDescription)")
             return
         }
     }
 
     private func scheduleAudioData(_ data: Data) {
-        print("[TTS] scheduleAudioData called, data size: \(data.count) bytes")
         do {
             let player = try AVAudioPlayer(data: data)
             player.isMeteringEnabled = true
             scheduledChunkCount += 1
-            print("[TTS] Created player #\(scheduledChunkCount)")
+            onSystemLog?("TTS playing chunk \(scheduledChunkCount)")
 
             if currentPlayer == nil {
                 currentPlayer = player
@@ -177,7 +153,7 @@ final class StreamingTTSPlayer {
                 pendingPlayers.append(player)
             }
         } catch {
-            print("[TTS] AVAudioPlayer error: \(error)")
+            onSystemLog?("TTS player error: \(error.localizedDescription)")
         }
     }
 
@@ -190,12 +166,10 @@ final class StreamingTTSPlayer {
         objc_setAssociatedObject(player, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
         player.delegate = delegate
         player.play()
-        print("[TTS] Playing chunk \(completedChunkCount + 1)")
     }
 
     private func onChunkFinished() {
         completedChunkCount += 1
-        print("[TTS] Chunk completed: \(completedChunkCount)/\(scheduledChunkCount)")
 
         if let next = pendingPlayers.first {
             pendingPlayers.removeFirst()

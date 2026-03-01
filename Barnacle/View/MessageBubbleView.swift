@@ -17,8 +17,8 @@ struct MessageBubbleView: View {
 
     var body: some View {
         Text(formattedText)
-            .font(config.displayFont.font(size: config.displayFontSize))
-            .foregroundStyle(BarnacleTheme.textPrimary)
+            .font(isSystem ? .caption.monospaced() : config.displayFont.font(size: config.displayFontSize))
+            .foregroundStyle(isSystem ? BarnacleTheme.accent.opacity(0.5) : BarnacleTheme.textPrimary)
             .contextMenu {
                 Button {
                     UIPasteboard.general.string = message.text
@@ -31,8 +31,17 @@ struct MessageBubbleView: View {
             }
     }
 
+    private var isSystem: Bool {
+        message.role == .system
+    }
+
     private var formattedText: String {
-        let prefix = message.role == .user ? "[USER]" : "[AGENT]"
+        let prefix: String
+        switch message.role {
+        case .user: prefix = "[USER]"
+        case .assistant: prefix = "[AGENT]"
+        case .system: prefix = "[SYSTEM]"
+        }
         let text = config.displayAllCaps ? message.text.uppercased() : message.text
         return "\(prefix) \(text)"
     }

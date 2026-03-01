@@ -20,6 +20,8 @@ final class ScribeTranscriber {
 
     private(set) var state: RecordingState = .idle
 
+    var onSystemLog: ((String) -> Void)?
+
     var finalTranscript: String {
         let combined = committedText + currentPartial
         return combined.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -53,7 +55,6 @@ final class ScribeTranscriber {
     }
 
     func start(apiKey: String, skipAudioSessionSetup: Bool = false) async throws {
-        print("[Scribe] start() called, apiKey length=\(apiKey.count)")
         self.apiKey = apiKey
 
         if !skipAudioSessionSetup {
@@ -70,7 +71,6 @@ final class ScribeTranscriber {
 
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.outputFormat(forBus: 0)
-        print("[Scribe] nativeFormat: sampleRate=\(nativeFormat.sampleRate), channels=\(nativeFormat.channelCount)")
 
         let tFormat = AudioUtilities.transcriptionFormat
         targetFormat = tFormat
@@ -79,11 +79,10 @@ final class ScribeTranscriber {
             from: nativeFormat,
             to: tFormat
         ) else {
-            print("[Scribe] ERROR: failed to create AVAudioConverter")
+            onSystemLog?("Scribe: converter failed")
             return
         }
         audioConverter = converter
-        print("[Scribe] converter created: \(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch -> 16000Hz 1ch")
 
         vadState = await vadManager!.makeStreamState()
         sampleBuffer.clear()
@@ -106,9 +105,6 @@ final class ScribeTranscriber {
             buffer.append(samples)
 
             guard self.webSocketTask != nil else { return }
-            if chunkCount <= 3 || chunkCount % 50 == 0 {
-                print("[Scribe] tap #\(chunkCount): bufferFrames=\(pcm.frameLength), converted=\(samples.count)")
-            }
             Self.sendSamples(
                 samples,
                 webSocketTask: self.webSocketTask,
@@ -120,7 +116,7 @@ final class ScribeTranscriber {
             audioEngine.prepare()
             try audioEngine.start()
         }
-        print("[Scribe] audioEngine started")
+        onSystemLog?("Scribe engine ready")
         state = .recording
         audioLevel = 0
         silenceProgress = 0
@@ -147,7 +143,6 @@ final class ScribeTranscriber {
 
     func stop() {
         guard state == .recording else { return }
-        print("[Scribe] stop() called, committed=\"\(committedText)\", partial=\"\(currentPartial)\"")
         audioEngine.inputNode.removeTap(onBus: 0)
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
@@ -159,7 +154,6 @@ final class ScribeTranscriber {
         recordingTimer = nil
         lastScribeActivityDate = nil
         state = .stopped
-        print("[Scribe] stopped, finalTranscript=\"\(finalTranscript)\"")
     }
 
     func stopEngine() {
@@ -194,81 +188,64 @@ final class ScribeTranscriber {
 
         var request = URLRequest(url: components.url!)
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-        print("[Scribe] WebSocket URL: \(components.url!)")
 
         webSocketTask = URLSession.shared.webSocketTask(with: request)
         webSocketTask?.resume()
-        print("[Scribe] WebSocket resumed (speech detected)")
+        onSystemLog?("Scribe WS connected")
         receiveMessage()
     }
 
     private func receiveMessage() {
         webSocketTask?.receive { [weak self] result in
-            guard let self else {
-                print("[Scribe] receiveMessage: self is nil")
-                return
-            }
+            guard let self else { return }
             switch result {
             case .success(let message):
                 switch message {
                 case .string(let text):
-                    print("[Scribe] WS received string (\(text.prefix(200)))")
                     self.handleMessage(text)
-                case .data(let data):
-                    print("[Scribe] WS received binary data (\(data.count) bytes)")
+                case .data:
+                    break
                 @unknown default:
-                    print("[Scribe] WS received unknown message type")
+                    break
                 }
                 self.receiveMessage()
             case .failure(let error):
-                print("[Scribe] WS receive FAILED: \(error)")
+                self.onSystemLog?("Scribe WS error: \(error.localizedDescription)")
                 break
             }
         }
     }
 
     private func handleMessage(_ text: String) {
-        guard let data = text.data(using: .utf8) else {
-            print("[Scribe] handleMessage: failed to convert text to data")
-            return
-        }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("[Scribe] handleMessage: failed to parse JSON")
-            return
-        }
-        guard let messageType = json["message_type"] as? String else {
-            print("[Scribe] handleMessage: no message_type, keys=\(json.keys.sorted())")
-            return
-        }
-
-        print("[Scribe] message_type=\(messageType)")
+        guard let data = text.data(using: .utf8) else { return }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        guard let messageType = json["message_type"] as? String else { return }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             switch messageType {
             case "session_started":
-                print("[Scribe] session started, config=\(json["config"] ?? "nil")")
+                break
             case "partial_transcript":
                 if let partialText = json["text"] as? String {
-                    print("[Scribe] partial: \"\(partialText)\"")
                     self.currentPartial = partialText
                     self.displayText = self.committedText + partialText
                     self.lastScribeActivityDate = Date()
                 }
             case "committed_transcript":
                 if let segment = json["text"] as? String {
-                    print("[Scribe] committed: \"\(segment)\"")
                     let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
                         self.committedText += (self.committedText.isEmpty ? "" : " ") + segment
                         self.displayText = self.committedText
                         self.hasCommittedText = true
+                        let preview = String(trimmed.prefix(40))
+                        self.onSystemLog?("Scribe committed: \(preview)")
                     }
                     self.currentPartial = ""
                     self.lastScribeActivityDate = Date()
                 }
             default:
-                print("[Scribe] unhandled message_type: \(messageType), json=\(json)")
                 break
             }
         }
@@ -292,16 +269,8 @@ final class ScribeTranscriber {
         let base64 = int16Data.base64EncodedString()
         let json = "{\"message_type\":\"input_audio_chunk\",\"audio_base_64\":\"\(base64)\"}"
 
-        if chunkIndex <= 3 || chunkIndex % 50 == 0 {
-            print("[Scribe] sending chunk #\(chunkIndex): \(count) samples, \(int16Data.count) bytes, base64 len=\(base64.count)")
-        }
-
         Task {
-            do {
-                try await webSocketTask?.send(.string(json))
-            } catch {
-                print("[Scribe] WS send FAILED chunk #\(chunkIndex): \(error)")
-            }
+            try? await webSocketTask?.send(.string(json))
         }
     }
 
@@ -338,14 +307,14 @@ final class ScribeTranscriber {
                 case .speechStart:
                     isSpeechActive = true
                     connectWebSocket()
-                    print("[Scribe] VAD speechStart -> connecting WebSocket")
+                    onSystemLog?("Scribe: speech detected")
                 case .speechEnd:
                     isSpeechActive = false
-                    print("[Scribe] VAD speechEnd")
+                    onSystemLog?("Scribe: speech ended")
                 }
             }
         } catch {
-            print("[Scribe] VAD error: \(error)")
+            onSystemLog?("Scribe VAD error: \(error.localizedDescription)")
         }
     }
 
@@ -369,7 +338,7 @@ final class ScribeTranscriber {
             self.silenceProgress = min(1, elapsed / self.eouTimeout)
 
             if elapsed >= self.eouTimeout {
-                print("[Scribe] EOU timeout reached (\(self.eouTimeout)s since last Scribe activity)")
+                self.onSystemLog?("Scribe: EOU timeout")
                 self.stop()
             }
         }

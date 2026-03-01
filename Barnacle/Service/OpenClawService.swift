@@ -178,7 +178,6 @@ enum OpenClawService {
             instructions += " Your text will be processed by ElevenLabs TTS. You can use audio tags in square brackets for expressiveness: [laughs], [sighs], [whispers], [sarcastic], [excited], [curious]. Use ellipses (...) for pauses and CAPS for emphasis."
         }
 
-        print("[OpenClaw] hasTTS=\(hasTTS), ttsModel=\(ttsModel), instructions: \(instructions)")
         return instructions
     }
 

@@ -67,6 +67,9 @@ struct SettingsView: View {
     private var visualTheme: VisualTheme = .midnight
 
     @State
+    private var showDebugMessages = false
+
+    @State
     private var isGeneratingGreeting = false
 
     @State
@@ -126,6 +129,8 @@ struct SettingsView: View {
                 }
 
                 Toggle("All Caps", isOn: $displayAllCaps)
+
+                Toggle("Show Debug Messages", isOn: $showDebugMessages)
 
                 Text("PREVIEW TEXT")
                     .font(displayFont.font(size: displayFontSize))
@@ -249,6 +254,7 @@ struct SettingsView: View {
                     config.displayFontSize = displayFontSize
                     config.displayAllCaps = displayAllCaps
                     config.visualTheme = visualTheme
+                    config.showDebugMessages = showDebugMessages
                     config.save()
                     dismiss()
                 }
@@ -274,6 +280,7 @@ struct SettingsView: View {
             displayFontSize = config.displayFontSize
             displayAllCaps = config.displayAllCaps
             visualTheme = config.visualTheme
+            showDebugMessages = config.showDebugMessages
         }
     }
 

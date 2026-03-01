@@ -16,11 +16,15 @@ struct ConversationView: View {
 
     let liveTranscript: String
 
+    private var visibleMessages: [MessageModel] {
+        config.showDebugMessages ? messages : messages.filter { $0.role != .system }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(messages) { message in
+                    ForEach(visibleMessages) { message in
                         MessageBubbleView(message: message)
                             .id(message.id)
                     }
@@ -36,8 +40,8 @@ struct ConversationView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 12)
             }
-            .onChange(of: messages.count) {
-                if let last = messages.last {
+            .onChange(of: visibleMessages.count) {
+                if let last = visibleMessages.last {
                     withAnimation {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
