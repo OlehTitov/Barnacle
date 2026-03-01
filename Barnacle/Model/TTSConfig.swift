@@ -26,4 +26,6 @@ struct TTSConfig {
     let openAIVoice: String
 
     let openAIVoiceInstructions: String
+
+    let openAISpeed: Double
 }

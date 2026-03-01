@@ -166,7 +166,8 @@ final class StreamingTTSPlayer {
             "model": "gpt-4o-mini-tts",
             "input": text,
             "voice": config.openAIVoice,
-            "response_format": "mp3"
+            "response_format": "mp3",
+            "speed": config.openAISpeed
         ]
 
         if !config.openAIVoiceInstructions.isEmpty {

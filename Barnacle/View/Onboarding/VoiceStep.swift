@@ -119,7 +119,8 @@ struct VoiceStep: View {
                         style: 0.4,
                         openAIAPIKey: "",
                         openAIVoice: "",
-                        openAIVoiceInstructions: ""
+                        openAIVoiceInstructions: "",
+                        openAISpeed: 1.0
                     )
                 )
                 testResult = .success

@@ -21,6 +21,7 @@ final class AppConfig {
     var ttsStyle: Double
     var openAIVoice: OpenAIVoice
     var openAIVoiceInstructions: String
+    var openAISpeed: Double
     var isOnboarded: Bool
     var transcriptionEngine: TranscriptionEngine
     var whisperModel: WhisperModel
@@ -48,6 +49,8 @@ final class AppConfig {
             rawValue: UserDefaults.standard.string(forKey: "openAIVoice") ?? ""
         ) ?? .coral
         self.openAIVoiceInstructions = UserDefaults.standard.string(forKey: "openAIVoiceInstructions") ?? ""
+        self.openAISpeed = UserDefaults.standard.object(forKey: "openAISpeed") != nil
+            ? UserDefaults.standard.double(forKey: "openAISpeed") : 1.0
         self.isOnboarded = UserDefaults.standard.bool(forKey: "isOnboarded")
         self.transcriptionEngine = TranscriptionEngine(
             rawValue: UserDefaults.standard.string(forKey: "transcriptionEngine") ?? ""
@@ -127,7 +130,8 @@ final class AppConfig {
             style: ttsStyle,
             openAIAPIKey: openAIAPIKey,
             openAIVoice: openAIVoice.rawValue,
-            openAIVoiceInstructions: openAIVoiceInstructions
+            openAIVoiceInstructions: openAIVoiceInstructions,
+            openAISpeed: openAISpeed
         )
     }
 
@@ -148,6 +152,7 @@ final class AppConfig {
         UserDefaults.standard.set(ttsStyle, forKey: "ttsStyle")
         UserDefaults.standard.set(openAIVoice.rawValue, forKey: "openAIVoice")
         UserDefaults.standard.set(openAIVoiceInstructions, forKey: "openAIVoiceInstructions")
+        UserDefaults.standard.set(openAISpeed, forKey: "openAISpeed")
         UserDefaults.standard.set(isOnboarded, forKey: "isOnboarded")
         UserDefaults.standard.set(transcriptionEngine.rawValue, forKey: "transcriptionEngine")
         UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel")

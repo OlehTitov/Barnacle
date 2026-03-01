@@ -64,6 +64,9 @@ struct SettingsView: View {
     private var openAIVoiceInstructions = ""
 
     @State
+    private var openAISpeed: Double = 1.0
+
+    @State
     private var displayFont: GeistPixelFont = .square
 
     @State
@@ -236,6 +239,16 @@ struct SettingsView: View {
                         TextField("e.g. Speak warmly", text: $openAIVoiceInstructions)
                             .multilineTextAlignment(.trailing)
                     }
+
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Speed")
+                            Spacer()
+                            Text(String(format: "%.2f", openAISpeed))
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $openAISpeed, in: 0.25...4.0, step: 0.25)
+                    }
                 }
 
                 Button {
@@ -285,6 +298,7 @@ struct SettingsView: View {
                     config.ttsStyle = style
                     config.openAIVoice = openAIVoice
                     config.openAIVoiceInstructions = openAIVoiceInstructions
+                    config.openAISpeed = openAISpeed
                     config.transcriptionEngine = transcriptionEngine
                     config.whisperModel = whisperModel
                     config.openAIAPIKey = openAIAPIKey
@@ -314,6 +328,7 @@ struct SettingsView: View {
             style = config.ttsStyle
             openAIVoice = config.openAIVoice
             openAIVoiceInstructions = config.openAIVoiceInstructions
+            openAISpeed = config.openAISpeed
             transcriptionEngine = config.transcriptionEngine
             whisperModel = config.whisperModel
             openAIAPIKey = config.openAIAPIKey
@@ -351,7 +366,8 @@ struct SettingsView: View {
                         style: style,
                         openAIAPIKey: openAIAPIKey,
                         openAIVoice: openAIVoice.rawValue,
-                        openAIVoiceInstructions: openAIVoiceInstructions
+                        openAIVoiceInstructions: openAIVoiceInstructions,
+                        openAISpeed: openAISpeed
                     )
                 )
                 greetingStatus = "Cached"
