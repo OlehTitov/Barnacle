@@ -30,8 +30,6 @@ final class AppConfig {
     var showDebugMessages: Bool
 
     init() {
-        self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
-        self.voiceID = UserDefaults.standard.string(forKey: "voiceID") ?? ""
         self.ttsModel = TTSModel(
             rawValue: UserDefaults.standard.string(forKey: "ttsModel") ?? ""
         ) ?? .v3
@@ -59,6 +57,18 @@ final class AppConfig {
         ) ?? .midnight
         self.showDebugMessages = UserDefaults.standard.bool(forKey: "showDebugMessages")
 
+        if let data = KeychainStore.load(key: "gatewayURL"),
+           let value = String(data: data, encoding: .utf8)
+        {
+            self.gatewayURL = value
+        } else if let legacy = UserDefaults.standard.string(forKey: "gatewayURL"), !legacy.isEmpty {
+            self.gatewayURL = legacy
+            if let data = legacy.data(using: .utf8) { KeychainStore.save(key: "gatewayURL", data: data) }
+            UserDefaults.standard.removeObject(forKey: "gatewayURL")
+        } else {
+            self.gatewayURL = ""
+        }
+
         if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
         {
@@ -73,6 +83,18 @@ final class AppConfig {
             self.elevenLabsAPIKey = key
         } else {
             self.elevenLabsAPIKey = ""
+        }
+
+        if let data = KeychainStore.load(key: "voiceID"),
+           let value = String(data: data, encoding: .utf8)
+        {
+            self.voiceID = value
+        } else if let legacy = UserDefaults.standard.string(forKey: "voiceID"), !legacy.isEmpty {
+            self.voiceID = legacy
+            if let data = legacy.data(using: .utf8) { KeychainStore.save(key: "voiceID", data: data) }
+            UserDefaults.standard.removeObject(forKey: "voiceID")
+        } else {
+            self.voiceID = ""
         }
 
         if let keyData = KeychainStore.load(key: "openAIAPIKey"),
@@ -96,8 +118,6 @@ final class AppConfig {
     }
 
     func save() {
-        UserDefaults.standard.set(gatewayURL, forKey: "gatewayURL")
-        UserDefaults.standard.set(voiceID, forKey: "voiceID")
         UserDefaults.standard.set(ttsModel.rawValue, forKey: "ttsModel")
         UserDefaults.standard.set(ttsStability.rawValue, forKey: "ttsStability")
         UserDefaults.standard.set(ttsSimilarityBoost, forKey: "ttsSimilarityBoost")
@@ -111,12 +131,20 @@ final class AppConfig {
         UserDefaults.standard.set(visualTheme.rawValue, forKey: "visualTheme")
         UserDefaults.standard.set(showDebugMessages, forKey: "showDebugMessages")
 
+        if let data = gatewayURL.data(using: .utf8) {
+            KeychainStore.save(key: "gatewayURL", data: data)
+        }
+
         if let data = gatewayToken.data(using: .utf8) {
             KeychainStore.save(key: "gatewayToken", data: data)
         }
 
         if let data = elevenLabsAPIKey.data(using: .utf8) {
             KeychainStore.save(key: "elevenLabsAPIKey", data: data)
+        }
+
+        if let data = voiceID.data(using: .utf8) {
+            KeychainStore.save(key: "voiceID", data: data)
         }
 
         if let data = openAIAPIKey.data(using: .utf8) {
