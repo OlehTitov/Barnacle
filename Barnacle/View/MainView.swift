@@ -126,7 +126,7 @@ struct MainView: View {
 
         switch conversation.phase {
         case .idle, .finished, .failed:
-            SFXPlayer.play("startup")
+            SFXPlayer.play("startup-sound")
             Task { await conversation.runTurn(config: config) }
         default:
             SFXPlayer.play("power-off")
