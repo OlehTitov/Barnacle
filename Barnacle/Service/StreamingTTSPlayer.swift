@@ -139,14 +139,18 @@ final class StreamingTTSPlayer {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
 
+        var voiceSettings: [String: Any] = [
+            "stability": config.stability,
+            "similarity_boost": config.similarityBoost,
+            "style": config.style
+        ]
+        if config.modelID != TTSModel.v3.rawValue {
+            voiceSettings["speed"] = config.elevenLabsSpeed
+        }
         let body: [String: Any] = [
             "text": text,
             "model_id": config.modelID,
-            "voice_settings": [
-                "stability": config.stability,
-                "similarity_boost": config.similarityBoost,
-                "style": config.style
-            ]
+            "voice_settings": voiceSettings
         ]
 
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }

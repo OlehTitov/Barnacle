@@ -21,6 +21,8 @@ struct TTSConfig {
 
     let style: Double
 
+    let elevenLabsSpeed: Double
+
     let openAIAPIKey: String
 
     let openAIVoice: String

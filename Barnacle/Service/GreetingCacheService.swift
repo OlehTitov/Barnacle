@@ -34,14 +34,18 @@ enum GreetingCacheService {
             r.httpMethod = "POST"
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
             r.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
+            var voiceSettings: [String: Any] = [
+                "stability": config.stability,
+                "similarity_boost": config.similarityBoost,
+                "style": config.style
+            ]
+            if config.modelID != TTSModel.v3.rawValue {
+                voiceSettings["speed"] = config.elevenLabsSpeed
+            }
             r.httpBody = try JSONSerialization.data(withJSONObject: [
                 "text": greetingText,
                 "model_id": config.modelID,
-                "voice_settings": [
-                    "stability": config.stability,
-                    "similarity_boost": config.similarityBoost,
-                    "style": config.style
-                ]
+                "voice_settings": voiceSettings
             ])
             request = r
 

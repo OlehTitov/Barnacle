@@ -43,6 +43,9 @@ struct SettingsView: View {
     private var style: Double = 0.4
 
     @State
+    private var elevenLabsSpeed: Double = 1.0
+
+    @State
     private var testStatus: String?
 
     @State
@@ -221,6 +224,18 @@ struct SettingsView: View {
                         }
                         Slider(value: $style, in: 0...1, step: 0.1)
                     }
+
+                    if ttsModel != .v3 {
+                        VStack(alignment: .leading) {
+                            HStack {
+                                Text("Speed")
+                                Spacer()
+                                Text(String(format: "%.1f", elevenLabsSpeed))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $elevenLabsSpeed, in: 0.7...1.2, step: 0.1)
+                        }
+                    }
                 }
 
                 if ttsProvider == .openAI {
@@ -296,6 +311,7 @@ struct SettingsView: View {
                     config.ttsStability = ttsStability
                     config.ttsSimilarityBoost = similarityBoost
                     config.ttsStyle = style
+                    config.elevenLabsSpeed = elevenLabsSpeed
                     config.openAIVoice = openAIVoice
                     config.openAIVoiceInstructions = openAIVoiceInstructions
                     config.openAISpeed = openAISpeed
@@ -326,6 +342,7 @@ struct SettingsView: View {
             ttsStability = config.ttsStability
             similarityBoost = config.ttsSimilarityBoost
             style = config.ttsStyle
+            elevenLabsSpeed = config.elevenLabsSpeed
             openAIVoice = config.openAIVoice
             openAIVoiceInstructions = config.openAIVoiceInstructions
             openAISpeed = config.openAISpeed
@@ -364,6 +381,7 @@ struct SettingsView: View {
                         stability: ttsStability.rawValue,
                         similarityBoost: similarityBoost,
                         style: style,
+                        elevenLabsSpeed: elevenLabsSpeed,
                         openAIAPIKey: openAIAPIKey,
                         openAIVoice: openAIVoice.rawValue,
                         openAIVoiceInstructions: openAIVoiceInstructions,

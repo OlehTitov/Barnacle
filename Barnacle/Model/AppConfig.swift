@@ -19,6 +19,7 @@ final class AppConfig {
     var ttsStability: TTSStability
     var ttsSimilarityBoost: Double
     var ttsStyle: Double
+    var elevenLabsSpeed: Double
     var openAIVoice: OpenAIVoice
     var openAIVoiceInstructions: String
     var openAISpeed: Double
@@ -45,6 +46,8 @@ final class AppConfig {
             ? UserDefaults.standard.double(forKey: "ttsSimilarityBoost") : 0.8
         self.ttsStyle = UserDefaults.standard.object(forKey: "ttsStyle") != nil
             ? UserDefaults.standard.double(forKey: "ttsStyle") : 0.4
+        self.elevenLabsSpeed = UserDefaults.standard.object(forKey: "elevenLabsSpeed") != nil
+            ? UserDefaults.standard.double(forKey: "elevenLabsSpeed") : 1.0
         self.openAIVoice = OpenAIVoice(
             rawValue: UserDefaults.standard.string(forKey: "openAIVoice") ?? ""
         ) ?? .coral
@@ -128,6 +131,7 @@ final class AppConfig {
             stability: ttsStability.rawValue,
             similarityBoost: ttsSimilarityBoost,
             style: ttsStyle,
+            elevenLabsSpeed: elevenLabsSpeed,
             openAIAPIKey: openAIAPIKey,
             openAIVoice: openAIVoice.rawValue,
             openAIVoiceInstructions: openAIVoiceInstructions,
@@ -150,6 +154,7 @@ final class AppConfig {
         UserDefaults.standard.set(ttsStability.rawValue, forKey: "ttsStability")
         UserDefaults.standard.set(ttsSimilarityBoost, forKey: "ttsSimilarityBoost")
         UserDefaults.standard.set(ttsStyle, forKey: "ttsStyle")
+        UserDefaults.standard.set(elevenLabsSpeed, forKey: "elevenLabsSpeed")
         UserDefaults.standard.set(openAIVoice.rawValue, forKey: "openAIVoice")
         UserDefaults.standard.set(openAIVoiceInstructions, forKey: "openAIVoiceInstructions")
         UserDefaults.standard.set(openAISpeed, forKey: "openAISpeed")

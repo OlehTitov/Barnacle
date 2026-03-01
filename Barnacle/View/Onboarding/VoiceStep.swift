@@ -117,6 +117,7 @@ struct VoiceStep: View {
                         stability: TTSStability.natural.rawValue,
                         similarityBoost: 0.8,
                         style: 0.4,
+                        elevenLabsSpeed: 1.0,
                         openAIAPIKey: "",
                         openAIVoice: "",
                         openAIVoiceInstructions: "",
