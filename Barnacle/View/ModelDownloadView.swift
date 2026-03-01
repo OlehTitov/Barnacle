@@ -24,7 +24,7 @@ struct ModelDownloadView: View {
 
                 Text("Preparing speech engine")
                     .font(BarnacleTheme.monoBody)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BarnacleTheme.textPrimary)
             } else if let errorMessage {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 40))
@@ -32,7 +32,7 @@ struct ModelDownloadView: View {
 
                 Text("Model download failed")
                     .font(BarnacleTheme.monoBody)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BarnacleTheme.textPrimary)
 
                 Text(errorMessage)
                     .font(BarnacleTheme.monoCaption)

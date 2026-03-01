@@ -64,6 +64,9 @@ struct SettingsView: View {
     private var displayAllCaps = true
 
     @State
+    private var visualTheme: VisualTheme = .midnight
+
+    @State
     private var isGeneratingGreeting = false
 
     @State
@@ -94,6 +97,14 @@ struct SettingsView: View {
                     Text(status)
                         .font(.caption)
                         .foregroundStyle(status.contains("Success") ? .green : .red)
+                }
+            }
+
+            Section("Appearance") {
+                Picker("Theme", selection: $visualTheme) {
+                    ForEach(VisualTheme.allCases, id: \.self) { theme in
+                        Text(theme.label).tag(theme)
+                    }
                 }
             }
 
@@ -237,6 +248,7 @@ struct SettingsView: View {
                     config.displayFont = displayFont
                     config.displayFontSize = displayFontSize
                     config.displayAllCaps = displayAllCaps
+                    config.visualTheme = visualTheme
                     config.save()
                     dismiss()
                 }
@@ -261,6 +273,7 @@ struct SettingsView: View {
             displayFont = config.displayFont
             displayFontSize = config.displayFontSize
             displayAllCaps = config.displayAllCaps
+            visualTheme = config.visualTheme
         }
     }
 

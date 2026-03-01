@@ -23,7 +23,7 @@ struct StatusLedView: View {
     private var ledColor: Color {
         switch appState {
         case .idle:
-            Color(white: 0.3)
+            BarnacleTheme.ledIdle
         case .recording, .speaking:
             BarnacleTheme.accent
         case .processing, .streaming:

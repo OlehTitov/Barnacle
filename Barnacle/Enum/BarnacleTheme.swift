@@ -9,21 +9,43 @@ import SwiftUI
 
 enum BarnacleTheme {
 
-    static let accent = Color(red: 0.0, green: 0.85, blue: 0.45)
+    static var current: VisualTheme = .midnight
 
-    static let background = Color(red: 0.11, green: 0.13, blue: 0.16)
+    static var accent: Color { current.accent }
 
-    static let displayBackground = Color(red: 0.08, green: 0.09, blue: 0.11)
+    static var background: Color { current.background }
 
-    static let buttonSurface = Color(red: 0.14, green: 0.16, blue: 0.19)
+    static var displayBackground: Color { current.displayBackground }
 
-    static let buttonBorder = Color(white: 0.25)
+    static var buttonSurface: Color { current.buttonSurface }
 
-    static let textPrimary = Color(white: 0.75)
+    static var buttonBorder: Color { current.buttonBorder }
 
-    static let surface = Color(red: 0.12, green: 0.12, blue: 0.12)
+    static var textPrimary: Color { current.textPrimary }
 
-    static let surfaceElevated = Color(red: 0.18, green: 0.18, blue: 0.18)
+    static var surface: Color { current.surface }
+
+    static var surfaceElevated: Color { current.surfaceElevated }
+
+    static var buttonBase: Color { current.buttonBase }
+
+    static var buttonGradientEdge: Color { current.buttonGradientEdge }
+
+    static var buttonStrokeTop: Color { current.buttonStrokeTop }
+
+    static var buttonStrokeBottom: Color { current.buttonStrokeBottom }
+
+    static var buttonIconActive: Color { current.buttonIconActive }
+
+    static var buttonIconInactive: Color { current.buttonIconInactive }
+
+    static var ledIdle: Color { current.ledIdle }
+
+    static var audioBlockInactive: Color { current.audioBlockInactive }
+
+    static var audioBlockActive: Color { current.audioBlockActive }
+
+    static var dotMatrix: Color { current.dotMatrix }
 
     static let controlButtonSize: CGFloat = 80
 

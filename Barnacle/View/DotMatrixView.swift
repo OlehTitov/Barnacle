@@ -18,7 +18,7 @@ struct DotMatrixView: View {
                 GridRow {
                     ForEach(0..<columns, id: \.self) { _ in
                         Circle()
-                            .fill(Color.black)
+                            .fill(BarnacleTheme.dotMatrix)
                             .frame(width: 5, height: 5)
                     }
                 }

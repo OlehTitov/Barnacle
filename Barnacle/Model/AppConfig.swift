@@ -25,6 +25,7 @@ final class AppConfig {
     var displayFont: GeistPixelFont
     var displayFontSize: Double
     var displayAllCaps: Bool
+    var visualTheme: VisualTheme
 
     init() {
         self.gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
@@ -51,6 +52,9 @@ final class AppConfig {
             ? UserDefaults.standard.double(forKey: "displayFontSize") : 14
         self.displayAllCaps = UserDefaults.standard.object(forKey: "displayAllCaps") != nil
             ? UserDefaults.standard.bool(forKey: "displayAllCaps") : true
+        self.visualTheme = VisualTheme(
+            rawValue: UserDefaults.standard.string(forKey: "visualTheme") ?? ""
+        ) ?? .midnight
 
         if let tokenData = KeychainStore.load(key: "gatewayToken"),
            let token = String(data: tokenData, encoding: .utf8)
@@ -101,6 +105,7 @@ final class AppConfig {
         UserDefaults.standard.set(displayFont.rawValue, forKey: "displayFont")
         UserDefaults.standard.set(displayFontSize, forKey: "displayFontSize")
         UserDefaults.standard.set(displayAllCaps, forKey: "displayAllCaps")
+        UserDefaults.standard.set(visualTheme.rawValue, forKey: "visualTheme")
 
         if let data = gatewayToken.data(using: .utf8) {
             KeychainStore.save(key: "gatewayToken", data: data)

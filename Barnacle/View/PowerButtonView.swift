@@ -23,13 +23,13 @@ struct PowerButtonView: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(Color.black)
+                    .fill(BarnacleTheme.buttonBase)
                     .frame(width: size, height: size)
 
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [BarnacleTheme.buttonSurface, Color(red: 0.08, green: 0.09, blue: 0.11)],
+                            colors: [BarnacleTheme.buttonSurface, BarnacleTheme.buttonGradientEdge],
                             center: .center,
                             startRadius: 0,
                             endRadius: (size - 6) / 2
@@ -40,7 +40,7 @@ struct PowerButtonView: View {
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color(white: 0.35), Color(white: 0.08)],
+                                    colors: [BarnacleTheme.buttonStrokeTop, BarnacleTheme.buttonStrokeBottom],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 ),
@@ -50,8 +50,8 @@ struct PowerButtonView: View {
 
                 Image(systemName: "power")
                     .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(isPoweredOn ? .white : Color(white: 0.4))
-                    .shadow(color: isPoweredOn ? .white.opacity(0.5) : .clear, radius: 4)
+                    .foregroundStyle(isPoweredOn ? BarnacleTheme.buttonIconActive : BarnacleTheme.buttonIconInactive)
+                    .shadow(color: isPoweredOn ? BarnacleTheme.buttonIconActive.opacity(0.5) : .clear, radius: 4)
             }
             .contentShape(Circle())
             .gesture(

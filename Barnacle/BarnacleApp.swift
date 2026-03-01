@@ -14,6 +14,7 @@ struct BarnacleApp: App {
     private var config = AppConfig()
 
     var body: some Scene {
+        let _ = (BarnacleTheme.current = config.visualTheme)
         WindowGroup {
             Group {
                 if config.isOnboarded {
@@ -23,7 +24,8 @@ struct BarnacleApp: App {
                 }
             }
             .tint(BarnacleTheme.accent)
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(config.visualTheme.colorScheme)
+            .id(config.visualTheme)
         }
         .environment(config)
     }

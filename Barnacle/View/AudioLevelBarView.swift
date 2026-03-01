@@ -38,7 +38,7 @@ struct AudioLevelBarView: View {
 
     private func blockColor(at index: Int) -> Color {
         guard isActive else {
-            return Color(white: 0.2)
+            return BarnacleTheme.audioBlockInactive
         }
 
         let lit: Int
@@ -49,7 +49,7 @@ struct AudioLevelBarView: View {
         }
 
         guard index < lit else {
-            return Color(white: 0.2)
+            return BarnacleTheme.audioBlockInactive
         }
 
         if index >= blockCount - hotZone {
@@ -58,7 +58,7 @@ struct AudioLevelBarView: View {
             return Color(red: 1.0, green: 0.45 - t * 0.35, blue: 0.1)
         }
 
-        return .white
+        return BarnacleTheme.audioBlockActive
     }
 
     private var isActive: Bool {
