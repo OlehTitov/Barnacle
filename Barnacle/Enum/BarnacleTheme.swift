@@ -27,6 +27,10 @@ enum BarnacleTheme {
 
     static var surfaceElevated: Color { current.surfaceElevated }
 
+    static var buttonSocketInner: Color { current.buttonSocketInner }
+
+    static var buttonDomeHighlight: Color { current.buttonDomeHighlight }
+
     static var buttonBase: Color { current.buttonBase }
 
     static var buttonGradientEdge: Color { current.buttonGradientEdge }

@@ -29,6 +29,8 @@ struct VolumeControlView: View {
                     .foregroundStyle(isPoweredOn ? BarnacleTheme.buttonIconActive : BarnacleTheme.buttonIconInactive)
                     .shadow(color: isPoweredOn ? BarnacleTheme.buttonIconActive.opacity(0.5) : .clear, radius: 4)
                     .frame(width: 44, height: BarnacleTheme.controlButtonSize)
+                    .scaleEffect(minusPressed ? 0.92 : 1.0)
+                    .animation(.easeInOut(duration: 0.08), value: minusPressed)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
@@ -56,6 +58,8 @@ struct VolumeControlView: View {
                     .foregroundStyle(isPoweredOn ? BarnacleTheme.buttonIconActive : BarnacleTheme.buttonIconInactive)
                     .shadow(color: isPoweredOn ? BarnacleTheme.buttonIconActive.opacity(0.5) : .clear, radius: 4)
                     .frame(width: 44, height: BarnacleTheme.controlButtonSize)
+                    .scaleEffect(plusPressed ? 0.92 : 1.0)
+                    .animation(.easeInOut(duration: 0.08), value: plusPressed)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
@@ -73,30 +77,69 @@ struct VolumeControlView: View {
                     )
             }
             .background(
-                Capsule()
-                    .fill(BarnacleTheme.buttonBase)
-                    .overlay(
-                        Capsule()
-                            .fill(
-                                EllipticalGradient(
-                                    colors: [BarnacleTheme.buttonSurface, BarnacleTheme.buttonGradientEdge],
-                                    center: .center
+                ZStack {
+                    // 1. Socket — recessed groove
+                    Capsule()
+                        .fill(BarnacleTheme.buttonSocketInner)
+                        .padding(-3)
+                        .overlay(
+                            LinearGradient(
+                                colors: [.black.opacity(0.6), .clear],
+                                startPoint: .top,
+                                endPoint: .center
+                            )
+                            .clipShape(Capsule().inset(by: -3))
+                        )
+                        .overlay(
+                            Capsule()
+                                .inset(by: -3)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [.clear, .clear, .white.opacity(0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
                                 )
+                        )
+
+                    // 2. Bezel
+                    Capsule()
+                        .fill(BarnacleTheme.buttonBase)
+
+                    // 3. Dome with convex lighting
+                    Capsule()
+                        .fill(
+                            EllipticalGradient(
+                                colors: [
+                                    BarnacleTheme.buttonDomeHighlight,
+                                    BarnacleTheme.buttonSurface,
+                                    BarnacleTheme.buttonGradientEdge
+                                ],
+                                center: UnitPoint(x: 0.5, y: 0.6)
                             )
-                            .padding(3)
-                            .overlay(
-                                Capsule()
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [BarnacleTheme.buttonStrokeTop, BarnacleTheme.buttonStrokeBottom],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 1.5
-                                    )
-                                    .padding(3)
-                            )
-                    )
+                        )
+                        .padding(3)
+                        // 4. Rim stroke
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [BarnacleTheme.buttonStrokeTop, BarnacleTheme.buttonStrokeBottom],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .padding(3)
+                        )
+                        .shadow(
+                            color: .black.opacity(0.9),
+                            radius: 5,
+                            x: 0,
+                            y: 10
+                        )
+                }
             )
 
             Text("VOLUME")

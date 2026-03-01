@@ -94,6 +94,24 @@ enum VisualTheme: String, CaseIterable {
         }
     }
 
+    var buttonSocketInner: Color {
+        switch self {
+        case .midnight:
+            Color(red: 0.04, green: 0.04, blue: 0.06)
+        case .plastic:
+            Color(red: 0.55, green: 0.15, blue: 0.12)
+        }
+    }
+
+    var buttonDomeHighlight: Color {
+        switch self {
+        case .midnight:
+            Color(red: 0.22, green: 0.24, blue: 0.28)
+        case .plastic:
+            Color(red: 0.95, green: 0.42, blue: 0.36)
+        }
+    }
+
     var buttonBase: Color {
         switch self {
         case .midnight:
