@@ -28,6 +28,9 @@ struct SettingsView: View {
     private var voiceID = ""
 
     @State
+    private var ttsProvider: TTSProvider = .elevenLabs
+
+    @State
     private var ttsModel: TTSModel = .v3
 
     @State
@@ -53,6 +56,12 @@ struct SettingsView: View {
 
     @State
     private var openAIAPIKey = ""
+
+    @State
+    private var openAIVoice: OpenAIVoice = .coral
+
+    @State
+    private var openAIVoiceInstructions = ""
 
     @State
     private var displayFont: GeistPixelFont = .square
@@ -158,49 +167,75 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Voice (ElevenLabs)") {
-                LabeledContent("API Key") {
-                    SecureField("API Key", text: $elevenLabsAPIKey)
-                        .multilineTextAlignment(.trailing)
-                }
-
-                Picker("Model", selection: $ttsModel) {
-                    ForEach(TTSModel.allCases, id: \.self) { model in
-                        Text(model.label).tag(model)
+            Section("Voice") {
+                Picker("TTS Provider", selection: $ttsProvider) {
+                    ForEach(TTSProvider.allCases, id: \.self) { provider in
+                        Text(provider.label).tag(provider)
                     }
                 }
 
-                LabeledContent("Voice ID") {
-                    TextField("Voice ID", text: $voiceID)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .multilineTextAlignment(.trailing)
-                }
+                if ttsProvider == .elevenLabs {
+                    LabeledContent("API Key") {
+                        SecureField("API Key", text: $elevenLabsAPIKey)
+                            .multilineTextAlignment(.trailing)
+                    }
 
-                Picker("Stability", selection: $ttsStability) {
-                    ForEach(TTSStability.allCases, id: \.self) { level in
-                        Text(level.label).tag(level)
+                    Picker("Model", selection: $ttsModel) {
+                        ForEach(TTSModel.allCases, id: \.self) { model in
+                            Text(model.label).tag(model)
+                        }
+                    }
+
+                    LabeledContent("Voice ID") {
+                        TextField("Voice ID", text: $voiceID)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    Picker("Stability", selection: $ttsStability) {
+                        ForEach(TTSStability.allCases, id: \.self) { level in
+                            Text(level.label).tag(level)
+                        }
+                    }
+
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Similarity Boost")
+                            Spacer()
+                            Text(String(format: "%.1f", similarityBoost))
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $similarityBoost, in: 0...1, step: 0.1)
+                    }
+
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Style")
+                            Spacer()
+                            Text(String(format: "%.1f", style))
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $style, in: 0...1, step: 0.1)
                     }
                 }
 
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Similarity Boost")
-                        Spacer()
-                        Text(String(format: "%.1f", similarityBoost))
-                            .foregroundStyle(.secondary)
+                if ttsProvider == .openAI {
+                    LabeledContent("OpenAI API Key") {
+                        SecureField("API Key", text: $openAIAPIKey)
+                            .multilineTextAlignment(.trailing)
                     }
-                    Slider(value: $similarityBoost, in: 0...1, step: 0.1)
-                }
 
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Style")
-                        Spacer()
-                        Text(String(format: "%.1f", style))
-                            .foregroundStyle(.secondary)
+                    Picker("Voice", selection: $openAIVoice) {
+                        ForEach(OpenAIVoice.allCases, id: \.self) { voice in
+                            Text(voice.label).tag(voice)
+                        }
                     }
-                    Slider(value: $style, in: 0...1, step: 0.1)
+
+                    LabeledContent("Voice Instructions") {
+                        TextField("e.g. Speak warmly", text: $openAIVoiceInstructions)
+                            .multilineTextAlignment(.trailing)
+                    }
                 }
 
                 Button {
@@ -217,7 +252,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .disabled(elevenLabsAPIKey.isEmpty || voiceID.isEmpty || isGeneratingGreeting)
+                .disabled(greetingDisabled)
 
                 if let status = greetingStatus {
                     Text(status)
@@ -243,10 +278,13 @@ struct SettingsView: View {
                     config.gatewayToken = gatewayToken
                     config.elevenLabsAPIKey = elevenLabsAPIKey
                     config.voiceID = voiceID
+                    config.ttsProvider = ttsProvider
                     config.ttsModel = ttsModel
                     config.ttsStability = ttsStability
                     config.ttsSimilarityBoost = similarityBoost
                     config.ttsStyle = style
+                    config.openAIVoice = openAIVoice
+                    config.openAIVoiceInstructions = openAIVoiceInstructions
                     config.transcriptionEngine = transcriptionEngine
                     config.whisperModel = whisperModel
                     config.openAIAPIKey = openAIAPIKey
@@ -269,10 +307,13 @@ struct SettingsView: View {
             gatewayToken = config.gatewayToken
             elevenLabsAPIKey = config.elevenLabsAPIKey
             voiceID = config.voiceID
+            ttsProvider = config.ttsProvider
             ttsModel = config.ttsModel
             ttsStability = config.ttsStability
             similarityBoost = config.ttsSimilarityBoost
             style = config.ttsStyle
+            openAIVoice = config.openAIVoice
+            openAIVoiceInstructions = config.openAIVoiceInstructions
             transcriptionEngine = config.transcriptionEngine
             whisperModel = config.whisperModel
             openAIAPIKey = config.openAIAPIKey
@@ -284,6 +325,16 @@ struct SettingsView: View {
         }
     }
 
+    private var greetingDisabled: Bool {
+        if isGeneratingGreeting { return true }
+        switch ttsProvider {
+        case .elevenLabs:
+            return elevenLabsAPIKey.isEmpty || voiceID.isEmpty
+        case .openAI:
+            return openAIAPIKey.isEmpty
+        }
+    }
+
     private func generateGreeting() {
         isGeneratingGreeting = true
         greetingStatus = nil
@@ -291,12 +342,16 @@ struct SettingsView: View {
             do {
                 try await GreetingCacheService.ensureCached(
                     config: TTSConfig(
+                        provider: ttsProvider,
                         apiKey: elevenLabsAPIKey,
                         voiceID: voiceID,
                         modelID: ttsModel.rawValue,
                         stability: ttsStability.rawValue,
                         similarityBoost: similarityBoost,
-                        style: style
+                        style: style,
+                        openAIAPIKey: openAIAPIKey,
+                        openAIVoice: openAIVoice.rawValue,
+                        openAIVoiceInstructions: openAIVoiceInstructions
                     )
                 )
                 greetingStatus = "Cached"

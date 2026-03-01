@@ -24,23 +24,48 @@ final class TTSPlayer {
         _ text: String,
         config: TTSConfig
     ) async throws {
-        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)") else {
-            throw TTSError.invalidVoiceID
-        }
+        let request: URLRequest
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "text": text,
-            "model_id": config.modelID,
-            "voice_settings": [
-                "stability": config.stability,
-                "similarity_boost": config.similarityBoost,
-                "style": config.style
+        switch config.provider {
+        case .elevenLabs:
+            guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)") else {
+                throw TTSError.invalidVoiceID
+            }
+            var r = URLRequest(url: url)
+            r.httpMethod = "POST"
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
+            r.httpBody = try JSONSerialization.data(withJSONObject: [
+                "text": text,
+                "model_id": config.modelID,
+                "voice_settings": [
+                    "stability": config.stability,
+                    "similarity_boost": config.similarityBoost,
+                    "style": config.style
+                ]
+            ])
+            request = r
+
+        case .openAI:
+            guard let url = URL(string: "https://api.openai.com/v1/audio/speech") else {
+                throw TTSError.apiError
+            }
+            var r = URLRequest(url: url)
+            r.httpMethod = "POST"
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue("Bearer \(config.openAIAPIKey)", forHTTPHeaderField: "Authorization")
+            var body: [String: Any] = [
+                "model": "gpt-4o-mini-tts",
+                "input": text,
+                "voice": config.openAIVoice,
+                "response_format": "mp3"
             ]
-        ])
+            if !config.openAIVoiceInstructions.isEmpty {
+                body["instructions"] = config.openAIVoiceInstructions
+            }
+            r.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request = r
+        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
 

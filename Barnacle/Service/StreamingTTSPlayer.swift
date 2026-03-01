@@ -102,25 +102,17 @@ final class StreamingTTSPlayer {
 
     private func fetchAndScheduleAudio(for text: String) async {
         guard let config else { return }
-        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)/stream") else { return }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
+        let request: URLRequest
 
-        let body: [String: Any] = [
-            "text": text,
-            "model_id": config.modelID,
-            "voice_settings": [
-                "stability": config.stability,
-                "similarity_boost": config.similarityBoost,
-                "style": config.style
-            ]
-        ]
-
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
-        request.httpBody = httpBody
+        switch config.provider {
+        case .elevenLabs:
+            guard let built = buildElevenLabsRequest(text: text, config: config) else { return }
+            request = built
+        case .openAI:
+            guard let built = buildOpenAIRequest(text: text, config: config) else { return }
+            request = built
+        }
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -137,6 +129,53 @@ final class StreamingTTSPlayer {
             onSystemLog?("TTS error: \(error.localizedDescription)")
             return
         }
+    }
+
+    private func buildElevenLabsRequest(text: String, config: TTSConfig) -> URLRequest? {
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(config.voiceID)/stream") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
+
+        let body: [String: Any] = [
+            "text": text,
+            "model_id": config.modelID,
+            "voice_settings": [
+                "stability": config.stability,
+                "similarity_boost": config.similarityBoost,
+                "style": config.style
+            ]
+        ]
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        request.httpBody = httpBody
+        return request
+    }
+
+    private func buildOpenAIRequest(text: String, config: TTSConfig) -> URLRequest? {
+        guard let url = URL(string: "https://api.openai.com/v1/audio/speech") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(config.openAIAPIKey)", forHTTPHeaderField: "Authorization")
+
+        var body: [String: Any] = [
+            "model": "gpt-4o-mini-tts",
+            "input": text,
+            "voice": config.openAIVoice,
+            "response_format": "mp3"
+        ]
+
+        if !config.openAIVoiceInstructions.isEmpty {
+            body["instructions"] = config.openAIVoiceInstructions
+        }
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        request.httpBody = httpBody
+        return request
     }
 
     private func scheduleAudioData(_ data: Data) {

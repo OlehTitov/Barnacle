@@ -14,10 +14,13 @@ final class AppConfig {
     var gatewayToken: String
     var elevenLabsAPIKey: String
     var voiceID: String
+    var ttsProvider: TTSProvider
     var ttsModel: TTSModel
     var ttsStability: TTSStability
     var ttsSimilarityBoost: Double
     var ttsStyle: Double
+    var openAIVoice: OpenAIVoice
+    var openAIVoiceInstructions: String
     var isOnboarded: Bool
     var transcriptionEngine: TranscriptionEngine
     var whisperModel: WhisperModel
@@ -30,6 +33,9 @@ final class AppConfig {
     var showDebugMessages: Bool
 
     init() {
+        self.ttsProvider = TTSProvider(
+            rawValue: UserDefaults.standard.string(forKey: "ttsProvider") ?? ""
+        ) ?? .elevenLabs
         self.ttsModel = TTSModel(
             rawValue: UserDefaults.standard.string(forKey: "ttsModel") ?? ""
         ) ?? .v3
@@ -38,6 +44,10 @@ final class AppConfig {
             ? UserDefaults.standard.double(forKey: "ttsSimilarityBoost") : 0.8
         self.ttsStyle = UserDefaults.standard.object(forKey: "ttsStyle") != nil
             ? UserDefaults.standard.double(forKey: "ttsStyle") : 0.4
+        self.openAIVoice = OpenAIVoice(
+            rawValue: UserDefaults.standard.string(forKey: "openAIVoice") ?? ""
+        ) ?? .coral
+        self.openAIVoiceInstructions = UserDefaults.standard.string(forKey: "openAIVoiceInstructions") ?? ""
         self.isOnboarded = UserDefaults.standard.bool(forKey: "isOnboarded")
         self.transcriptionEngine = TranscriptionEngine(
             rawValue: UserDefaults.standard.string(forKey: "transcriptionEngine") ?? ""
@@ -108,20 +118,36 @@ final class AppConfig {
 
     var ttsConfig: TTSConfig {
         TTSConfig(
+            provider: ttsProvider,
             apiKey: elevenLabsAPIKey,
             voiceID: voiceID,
             modelID: ttsModel.rawValue,
             stability: ttsStability.rawValue,
             similarityBoost: ttsSimilarityBoost,
-            style: ttsStyle
+            style: ttsStyle,
+            openAIAPIKey: openAIAPIKey,
+            openAIVoice: openAIVoice.rawValue,
+            openAIVoiceInstructions: openAIVoiceInstructions
         )
     }
 
+    var hasTTS: Bool {
+        switch ttsProvider {
+        case .elevenLabs:
+            !elevenLabsAPIKey.isEmpty && !voiceID.isEmpty
+        case .openAI:
+            !openAIAPIKey.isEmpty
+        }
+    }
+
     func save() {
+        UserDefaults.standard.set(ttsProvider.rawValue, forKey: "ttsProvider")
         UserDefaults.standard.set(ttsModel.rawValue, forKey: "ttsModel")
         UserDefaults.standard.set(ttsStability.rawValue, forKey: "ttsStability")
         UserDefaults.standard.set(ttsSimilarityBoost, forKey: "ttsSimilarityBoost")
         UserDefaults.standard.set(ttsStyle, forKey: "ttsStyle")
+        UserDefaults.standard.set(openAIVoice.rawValue, forKey: "openAIVoice")
+        UserDefaults.standard.set(openAIVoiceInstructions, forKey: "openAIVoiceInstructions")
         UserDefaults.standard.set(isOnboarded, forKey: "isOnboarded")
         UserDefaults.standard.set(transcriptionEngine.rawValue, forKey: "transcriptionEngine")
         UserDefaults.standard.set(whisperModel.rawValue, forKey: "whisperModel")

@@ -242,7 +242,7 @@ final class ConversationService {
         phase = .processing
         systemLog("Sending to agent...")
 
-        let hasTTS = !config.elevenLabsAPIKey.isEmpty && !config.voiceID.isEmpty
+        let hasTTS = config.hasTTS
         var streamedText = ""
         var ttsConnected = false
         var streamingRequestFailed = false
@@ -256,7 +256,8 @@ final class ConversationService {
                 gatewayURL: config.gatewayURL,
                 token: config.gatewayToken,
                 hasTTS: hasTTS,
-                ttsModel: config.ttsModel
+                ttsProvider: config.ttsProvider,
+                elevenLabsModel: config.ttsModel
             )
 
             systemLog("Streaming response...")
@@ -316,7 +317,8 @@ final class ConversationService {
                 gatewayURL: config.gatewayURL,
                 token: config.gatewayToken,
                 hasTTS: hasTTS,
-                ttsModel: config.ttsModel
+                ttsProvider: config.ttsProvider,
+                elevenLabsModel: config.ttsModel
             )
             streamedText = response
             messages[messageIndex].text = response

@@ -110,12 +110,16 @@ struct VoiceStep: View {
                 try await ttsPlayer.speak(
                     "Hello, I'm your assistant",
                     config: TTSConfig(
+                        provider: .elevenLabs,
                         apiKey: apiKeyInput,
                         voiceID: voiceIDInput,
                         modelID: TTSModel.v3.rawValue,
                         stability: TTSStability.natural.rawValue,
                         similarityBoost: 0.8,
-                        style: 0.4
+                        style: 0.4,
+                        openAIAPIKey: "",
+                        openAIVoice: "",
+                        openAIVoiceInstructions: ""
                     )
                 )
                 testResult = .success

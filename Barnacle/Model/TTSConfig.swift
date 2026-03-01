@@ -7,6 +7,8 @@
 
 struct TTSConfig {
 
+    let provider: TTSProvider
+
     let apiKey: String
 
     let voiceID: String
@@ -18,4 +20,10 @@ struct TTSConfig {
     let similarityBoost: Double
 
     let style: Double
+
+    let openAIAPIKey: String
+
+    let openAIVoice: String
+
+    let openAIVoiceInstructions: String
 }
