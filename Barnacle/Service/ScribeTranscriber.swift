@@ -45,7 +45,11 @@ final class ScribeTranscriber {
     private var processingTask: Task<Void, Never>?
     private var lastScribeActivityDate: Date?
     private var hasCommittedText = false
-    private let eouTimeout: TimeInterval = 2.0
+    private var eouTimeout: TimeInterval = 2.0
+    private var lastCommitDate: Date?
+    private var hasPartialText = false
+    private var speechEndDate: Date?
+    private let partialEouTimeout: TimeInterval = 1.5
 
     func prepareVad() async throws {
         guard vadManager == nil else { return }
@@ -54,7 +58,9 @@ final class ScribeTranscriber {
         )
     }
 
-    func start(apiKey: String, skipAudioSessionSetup: Bool = false) async throws {
+    func start(apiKey: String, eouTimeout: TimeInterval = 2.0, skipAudioSessionSetup: Bool = false) async throws {
+        self.eouTimeout = eouTimeout
+
         self.apiKey = apiKey
 
         if !skipAudioSessionSetup {
@@ -122,7 +128,10 @@ final class ScribeTranscriber {
         silenceProgress = 0
         isSpeechActive = false
         hasCommittedText = false
+        hasPartialText = false
         lastScribeActivityDate = nil
+        lastCommitDate = nil
+        speechEndDate = nil
         displayText = ""
         committedText = ""
         currentPartial = ""
@@ -153,6 +162,8 @@ final class ScribeTranscriber {
         recordingTimer?.invalidate()
         recordingTimer = nil
         lastScribeActivityDate = nil
+        lastCommitDate = nil
+        speechEndDate = nil
         state = .stopped
     }
 
@@ -170,7 +181,10 @@ final class ScribeTranscriber {
         silenceProgress = 0
         isSpeechActive = false
         hasCommittedText = false
+        hasPartialText = false
         lastScribeActivityDate = nil
+        lastCommitDate = nil
+        speechEndDate = nil
     }
 
     private func connectWebSocket() {
@@ -230,6 +244,7 @@ final class ScribeTranscriber {
                 if let partialText = json["text"] as? String {
                     self.currentPartial = partialText
                     self.displayText = self.committedText + partialText
+                    self.hasPartialText = true
                     self.lastScribeActivityDate = Date()
                 }
             case "committed_transcript":
@@ -243,7 +258,7 @@ final class ScribeTranscriber {
                         self.onSystemLog?("Scribe committed: \(preview)")
                     }
                     self.currentPartial = ""
-                    self.lastScribeActivityDate = Date()
+                    self.lastCommitDate = Date()
                 }
             default:
                 break
@@ -310,6 +325,7 @@ final class ScribeTranscriber {
                     onSystemLog?("Scribe: speech detected")
                 case .speechEnd:
                     isSpeechActive = false
+                    speechEndDate = Date()
                     onSystemLog?("Scribe: speech ended")
                 }
             }
@@ -320,26 +336,49 @@ final class ScribeTranscriber {
 
     private func startSilenceDetection() {
         lastScribeActivityDate = nil
+        lastCommitDate = nil
         hasCommittedText = false
+        hasPartialText = false
+        speechEndDate = nil
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, self.state == .recording else { return }
 
-            guard self.hasCommittedText, !self.isSpeechActive else {
+            guard !self.isSpeechActive else {
                 self.silenceProgress = 0
                 return
             }
 
-            guard let lastActivity = self.lastScribeActivityDate else {
-                self.silenceProgress = 0
-                return
+            let now = Date()
+
+            // Path 1: Committed text — 2s since last COMMIT (not partial)
+            if self.hasCommittedText, let lastCommit = self.lastCommitDate {
+                let elapsed = now.timeIntervalSince(lastCommit)
+                if elapsed >= self.eouTimeout {
+                    self.onSystemLog?("Scribe: EOU (committed)")
+                    self.stop()
+                    return
+                }
+                self.silenceProgress = min(1, elapsed / self.eouTimeout)
             }
-
-            let elapsed = Date().timeIntervalSince(lastActivity)
-            self.silenceProgress = min(1, elapsed / self.eouTimeout)
-
-            if elapsed >= self.eouTimeout {
-                self.onSystemLog?("Scribe: EOU timeout")
-                self.stop()
+            // Path 2: Partial-only — 1.5s since speech ended or last partial
+            else if self.hasPartialText {
+                let ref = max(
+                    self.speechEndDate ?? .distantPast,
+                    self.lastScribeActivityDate ?? .distantPast
+                )
+                guard ref != .distantPast else {
+                    self.silenceProgress = 0
+                    return
+                }
+                let elapsed = now.timeIntervalSince(ref)
+                if elapsed >= self.partialEouTimeout {
+                    self.onSystemLog?("Scribe: EOU (partial-only)")
+                    self.stop()
+                    return
+                }
+                self.silenceProgress = min(1, elapsed / self.partialEouTimeout)
+            } else {
+                self.silenceProgress = 0
             }
         }
     }

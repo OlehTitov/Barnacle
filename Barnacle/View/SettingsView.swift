@@ -85,6 +85,9 @@ struct SettingsView: View {
     private var showDebugMessages = false
 
     @State
+    private var eouTimeout: Double = 2.0
+
+    @State
     private var isGeneratingGreeting = false
 
     @State
@@ -170,6 +173,16 @@ struct SettingsView: View {
                         SecureField("API Key", text: $openAIAPIKey)
                             .multilineTextAlignment(.trailing)
                     }
+                }
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("EOU Silence")
+                        Spacer()
+                        Text(String(format: "%.1fs", eouTimeout))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $eouTimeout, in: 0.5...5.0, step: 0.5)
                 }
             }
 
@@ -323,6 +336,7 @@ struct SettingsView: View {
                     config.displayAllCaps = displayAllCaps
                     config.visualTheme = visualTheme
                     config.showDebugMessages = showDebugMessages
+                    config.eouTimeout = eouTimeout
                     config.save()
                     dismiss()
                 }
@@ -354,6 +368,7 @@ struct SettingsView: View {
             displayAllCaps = config.displayAllCaps
             visualTheme = config.visualTheme
             showDebugMessages = config.showDebugMessages
+            eouTimeout = config.eouTimeout
         }
     }
 

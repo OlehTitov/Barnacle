@@ -34,6 +34,8 @@ final class AppConfig {
 
     var showDebugMessages: Bool
 
+    var eouTimeout: Double
+
     init() {
         self.ttsProvider = TTSProvider(
             rawValue: UserDefaults.standard.string(forKey: "ttsProvider") ?? ""
@@ -72,6 +74,8 @@ final class AppConfig {
             rawValue: UserDefaults.standard.string(forKey: "visualTheme") ?? ""
         ) ?? .midnight
         self.showDebugMessages = UserDefaults.standard.bool(forKey: "showDebugMessages")
+        self.eouTimeout = UserDefaults.standard.object(forKey: "eouTimeout") != nil
+            ? UserDefaults.standard.double(forKey: "eouTimeout") : 2.0
 
         if let data = KeychainStore.load(key: "gatewayURL"),
            let value = String(data: data, encoding: .utf8)
@@ -166,6 +170,7 @@ final class AppConfig {
         UserDefaults.standard.set(displayAllCaps, forKey: "displayAllCaps")
         UserDefaults.standard.set(visualTheme.rawValue, forKey: "visualTheme")
         UserDefaults.standard.set(showDebugMessages, forKey: "showDebugMessages")
+        UserDefaults.standard.set(eouTimeout, forKey: "eouTimeout")
 
         if let data = gatewayURL.data(using: .utf8) {
             KeychainStore.save(key: "gatewayURL", data: data)
