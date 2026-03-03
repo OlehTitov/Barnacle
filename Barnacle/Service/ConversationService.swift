@@ -340,7 +340,11 @@ final class ConversationService {
 
     private func activateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: .defaultToSpeaker)
+        try session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+        )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     }
