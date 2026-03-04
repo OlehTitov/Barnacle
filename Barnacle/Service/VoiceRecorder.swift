@@ -37,7 +37,11 @@ final class VoiceRecorder {
     func startRecording(saveToFile: Bool = false, skipAudioSessionSetup: Bool = false) throws {
         if !skipAudioSessionSetup {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setCategory(
+                .playAndRecord,
+                mode: .measurement,
+                options: [.allowBluetoothA2DP, .defaultToSpeaker, .duckOthers]
+            )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         }
 

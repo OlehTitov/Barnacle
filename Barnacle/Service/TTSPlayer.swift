@@ -80,6 +80,14 @@ final class TTSPlayer {
             throw TTSError.apiError
         }
 
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [.allowBluetoothA2DP, .defaultToSpeaker]
+        )
+        try session.setActive(true)
+
         audioPlayer = try AVAudioPlayer(data: data)
         audioPlayer?.isMeteringEnabled = true
         isPlaying = true
