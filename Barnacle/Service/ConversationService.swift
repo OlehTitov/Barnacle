@@ -343,9 +343,23 @@ final class ConversationService {
         try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+            options: [.allowBluetoothHFP]
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
+        
+        // Force input+output to Bluetooth HFP if available
+        // Setting preferred input to HFP automatically routes output to HFP too
+        if let btInput = session.availableInputs?.first(where: {
+            $0.portType == .bluetoothHFP
+        }) {
+            try session.setPreferredInput(btInput)
+        }
+        
+        let route = session.currentRoute
+        let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
+        let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
+        systemLog("Audio route — in: [\(inputs)] out: [\(outputs)]")
+        
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     }
 

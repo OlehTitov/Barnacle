@@ -1,6 +1,104 @@
-# Barnacle — Coding Conventions
+# Barnacle
 
-Based on [martinlasek/skills](https://github.com/martinlasek/skills) Swift and SwiftUI coding guidelines.
+## What This Is
+
+An open-source iOS voice client for OpenClaw (GPL-3.0). Think walkie-talkie for your AI assistant — tap to talk, get a voice response. Supports ElevenLabs and OpenAI TTS, on-device transcription, Siri wake word, car Bluetooth.
+
+## Architecture
+
+```
+BarnacleApp.swift          — App entry, theme, onboarding gate
+  └─ MainView              — Primary UI (big tap button, waveform, messages)
+      └─ ConversationService — Orchestrates the full voice turn cycle
+          ├─ VoiceRecorder        — AVAudioEngine mic capture + silence detection
+          ├─ FluidTranscriber     — On-device ASR (FluidAudio/Parakeet TDT)
+          ├─ ScribeTranscriber    — Apple Speech (SFSpeechRecognizer) fallback
+          ├─ Transcriber          — Legacy Apple transcriber
+          ├─ WhisperService       — OpenAI Whisper API transcription
+          ├─ TTSPlayer            — Full-buffer TTS playback (AVAudioPlayer)
+          ├─ StreamingTTSPlayer   — Chunked streaming TTS playback
+          ├─ OpenClawService      — HTTP client for OpenClaw /v1/responses
+          └─ GreetingCacheService — Caches first greeting audio for instant playback
+```
+
+### Turn Cycle (ConversationService.runTurn)
+1. Activate audio session (single source of truth — see Audio section)
+2. Optional: play cached greeting
+3. Record user speech via chosen transcription engine
+4. Send transcript to OpenClaw via SSE streaming
+5. Stream response text chunks to TTS
+6. Play audio response
+7. If continuous mode: loop back to step 3
+
+## Audio Session — CRITICAL
+
+**Single owner:** `ConversationService.activateAudioSession()` is the ONLY place the audio session category is set. All recorders and players use `skipAudioSessionSetup: true`.
+
+```swift
+// ConversationService.swift — activateAudioSession()
+.playAndRecord, mode: .voiceChat,
+options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+```
+
+**Why `.voiceChat` mode:** Enables hardware echo cancellation. Without it, the speaker output feeds back into the mic during continuous conversation. DO NOT change to `.default` mode — echo will return.
+
+**Bluetooth routing:** `.allowBluetoothA2DP` routes media audio to car stereos and Bluetooth speakers. `.allowBluetoothHFP` enables hands-free profile for mic input from car systems. Both are needed for full car Bluetooth support (mic from car, audio to car).
+
+**Rules:**
+- NEVER set audio session category in VoiceRecorder, TTSPlayer, StreamingTTSPlayer, or any transcriber when called from ConversationService
+- The `skipAudioSessionSetup` parameter exists specifically for this — always pass `true` from ConversationService
+- VoiceRecorder has its own session setup ONLY for standalone use outside ConversationService
+- If audio routing breaks, check here FIRST — it's almost always a session category/mode issue
+
+## Transcription Engines
+
+Three engines, user-selectable in settings:
+
+| Engine | Class | How it works |
+|--------|-------|-------------|
+| FluidAudio | `FluidTranscriber` | On-device Parakeet TDT model. Best accuracy. Needs model download (~200MB). Has its own VAD (VadManager). |
+| Scribe | `ScribeTranscriber` | Apple SFSpeechRecognizer with on-device VAD. Good fallback. |
+| Whisper | `WhisperService` | Records audio file → sends to OpenAI Whisper API. Most accurate but adds network latency. |
+
+**VAD (Voice Activity Detection):** FluidTranscriber and ScribeTranscriber both have built-in VAD for end-of-utterance detection. VoiceRecorder has its own simple silence detection (power level threshold + 3-second timeout) used by the Whisper path.
+
+## TTS
+
+Two playback modes:
+- `TTSPlayer` — Downloads full audio, then plays. Simpler, used for non-streaming responses.
+- `StreamingTTSPlayer` — Receives text chunks via `sendTextChunk()`, fetches audio per chunk, queues playback. Used during SSE streaming for lower latency.
+
+Two providers: ElevenLabs (default) and OpenAI. Configured via `AppConfig` / `TTSConfig`.
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `ConversationService.swift` | Main orchestrator — start here for any flow changes |
+| `AppConfig.swift` (in Model/) | All user settings — TTS provider, voice, theme, API keys |
+| `TTSConfig.swift` (in Model/) | TTS-specific config extracted from AppConfig |
+| `MainView.swift` | Primary UI — tap button, waveform visualization, message list |
+| `OpenClawService.swift` | SSE streaming client for /v1/responses endpoint |
+| `SSEParser.swift` | Server-Sent Events parser |
+| `TextChunkBuffer.swift` | Buffers streaming text into speakable chunks for TTS |
+
+## Patterns to Follow
+
+- **@Observable** for all service/model classes (not Combine, not ObservableObject)
+- **No Combine** — use async/await and AsyncStream throughout
+- **Single file per view** — no nested view types
+- **Enums get their own files** in `Enum/` directory
+- **No didSet/willSet** — use explicit methods for mutations with side effects
+- **Property wrappers on their own line** with blank line between properties
+
+## Don'ts
+
+- Don't set AVAudioSession anywhere except `ConversationService.activateAudioSession()`
+- Don't use `.record` category — always `.playAndRecord` (need both mic and speaker)
+- Don't use `.measurement` mode from ConversationService — that disables echo cancellation
+- Don't add Combine imports — this project uses @Observable + async/await
+- Don't create "Manager" or "Coordinator" classes
+- Don't put enums in Model/ — they go in Enum/
 
 ## Folder Structure
 
