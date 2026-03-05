@@ -36,32 +36,28 @@ final class VoiceRecorder {
 
     func startRecording(saveToFile: Bool = false, skipAudioSessionSetup: Bool = false) throws {
         if !skipAudioSessionSetup {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playAndRecord,
-                mode: .measurement,
-                options: [.allowBluetoothA2DP, .defaultToSpeaker, .duckOthers]
-            )
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try AudioUtilities.activateVoiceCaptureSession()
         }
+        try AudioUtilities.preferBluetoothInputIfAvailable()
 
         let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        updateVoiceProcessing()
 
         if saveToFile {
             let fileURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension("wav")
-            let file = try AVAudioFile(
-                forWriting: fileURL,
-                settings: recordingFormat.settings
-            )
-            self.audioFile = file
             self.audioFileURL = fileURL
 
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
                 guard let self else { return }
-                try? file.write(from: buffer)
+                if self.audioFile == nil {
+                    self.audioFile = try? AVAudioFile(
+                        forWriting: fileURL,
+                        settings: buffer.format.settings
+                    )
+                }
+                try? self.audioFile?.write(from: buffer)
                 self.processPowerLevel(buffer: buffer)
             }
         } else {
@@ -69,7 +65,7 @@ final class VoiceRecorder {
             request.shouldReportPartialResults = true
             self.recognitionRequest = request
 
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
                 guard let self else { return }
                 request.append(buffer)
                 self.processPowerLevel(buffer: buffer)
@@ -78,7 +74,6 @@ final class VoiceRecorder {
 
         audioEngine.prepare()
         try audioEngine.start()
-        updateVoiceProcessing()
         state = .recording
         audioLevel = 0
         silenceProgress = 0
@@ -93,6 +88,7 @@ final class VoiceRecorder {
     }
 
     func updateVoiceProcessing() {
+        guard !audioEngine.isRunning else { return }
         let shouldEnable = AudioUtilities.shouldEnableVoiceProcessing()
         try? audioEngine.inputNode.setVoiceProcessingEnabled(shouldEnable)
     }
@@ -124,14 +120,12 @@ final class VoiceRecorder {
     }
 
     private nonisolated func processPowerLevel(buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frames = Int(buffer.frameLength)
+        guard let samples = AudioUtilities.monoSamples(from: buffer), !samples.isEmpty else { return }
         var sum: Float = 0
-        for i in 0..<frames {
-            let sample = channelData[i]
+        for sample in samples {
             sum += sample * sample
         }
-        let rms = sqrt(sum / Float(max(frames, 1)))
+        let rms = sqrt(sum / Float(samples.count))
         let db = 20 * log10(max(rms, 1e-10))
         let normalized = AudioUtilities.normalizeDecibels(db)
 

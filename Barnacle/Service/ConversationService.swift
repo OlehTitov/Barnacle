@@ -12,6 +12,15 @@ import Speech
 @Observable
 final class ConversationService {
 
+    private enum AppleSpeechOutcome {
+
+        case transcript(String)
+
+        case fallback(String)
+
+        case failure(any Error)
+    }
+
     private(set) var phase: ConversationPhase = .idle
 
     private(set) var messages: [MessageModel] = []
@@ -68,13 +77,28 @@ final class ConversationService {
 
             while !stopRequested {
                 let finalText = try await listen(config: config)
+                let trimmedFinalText = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                if !trimmedFinalText.isEmpty {
+                    systemLog("Transcript captured (\(trimmedFinalText.count) chars)")
+                } else {
+                    systemLog("Transcript empty after listening")
+                }
+
+                if stopRequested {
+                    if !trimmedFinalText.isEmpty {
+                        systemLog("Stop requested before sending transcript")
+                    }
+                    resetRecorders()
+                    break
+                }
+
+                guard !trimmedFinalText.isEmpty else {
                     resetRecorders()
                     continue
                 }
 
-                try await sendToOpenClaw(finalText, config: config)
+                try await sendToOpenClaw(trimmedFinalText, config: config)
                 resetRecorders()
             }
         } catch {
@@ -91,6 +115,13 @@ final class ConversationService {
 
     func stopListening() {
         stopRequested = true
+        systemLog("Stop requested")
+        stopCurrentInput()
+        streamingTTS.disconnect()
+        ttsPlayer.stop()
+    }
+
+    private func stopCurrentInput() {
         if fluidTranscriber.state == .recording {
             fluidTranscriber.stop()
         } else if scribeTranscriber.state == .recording {
@@ -98,8 +129,6 @@ final class ConversationService {
         } else if recorder.state == .recording {
             recorder.stopRecording()
         }
-        streamingTTS.disconnect()
-        ttsPlayer.stop()
     }
 
     private func listen(config: AppConfig) async throws -> String {
@@ -155,9 +184,73 @@ final class ConversationService {
             return ""
         }
 
-        let finalText = try await transcriber.transcribe(request: request)
+        let outcome = await withTaskGroup(of: AppleSpeechOutcome.self) { group in
+            group.addTask { [transcriber] in
+                do {
+                    let transcript = try await transcriber.transcribe(request: request)
+                    return .transcript(transcript)
+                } catch {
+                    return .failure(error)
+                }
+            }
+
+            group.addTask { [weak self] in
+                guard let self else { return .fallback("") }
+
+                while self.recorder.state == .recording {
+                    if Task.isCancelled { return .fallback("") }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+
+                let deadline = Date().addingTimeInterval(0.9)
+                while Date() < deadline {
+                    if Task.isCancelled { return .fallback("") }
+                    let partial = self.transcriber.partialResult
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !partial.isEmpty {
+                        return .fallback(partial)
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+
+                let partial = self.transcriber.partialResult
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return .fallback(partial)
+            }
+
+            let outcome = await group.next() ?? .fallback("")
+            group.cancelAll()
+
+            if case .fallback = outcome {
+                transcriber.cancel()
+            }
+
+            return outcome
+        }
+
+        let lastPartial = transcriber.partialResult
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if recorder.state == .recording {
+            recorder.stopRecording()
+        }
         transcriber.cancel()
-        return finalText
+
+        switch outcome {
+        case .transcript(let text):
+            return text
+        case .fallback(let text):
+            if !text.isEmpty {
+                systemLog("Apple Speech: using partial transcript after EOU")
+            }
+            return text
+        case .failure(let error):
+            if !lastPartial.isEmpty {
+                systemLog("Apple Speech: falling back to partial transcript after error: \(error.localizedDescription)")
+                return lastPartial
+            }
+            throw error
+        }
     }
 
     private func listenScribe(config: AppConfig) async throws -> String {
@@ -343,32 +436,9 @@ final class ConversationService {
     }
 
     private func activateAudioSession() throws {
+        try AudioUtilities.activateVoiceCaptureSession()
+
         let session = AVAudioSession.sharedInstance()
-
-        // Only add .defaultToSpeaker when no BT is connected
-        // .defaultToSpeaker overrides Bluetooth output routing
-        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP]
-        let hasBluetooth = session.availableInputs?.contains(where: {
-            $0.portType == .bluetoothHFP
-        }) ?? false
-        if !hasBluetooth {
-            options.insert(.defaultToSpeaker)
-        }
-
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: options
-        )
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-
-        // Force input+output to Bluetooth HFP if available
-        if let btInput = session.availableInputs?.first(where: {
-            $0.portType == .bluetoothHFP
-        }) {
-            try session.setPreferredInput(btInput)
-        }
-
         let route = session.currentRoute
         let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
         let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
@@ -406,11 +476,15 @@ final class ConversationService {
 
         switch reason {
         case .newDeviceAvailable:
+            setPreferredBluetoothInput()
             systemLog("Audio device connected — in: [\(ins)] out: [\(outs)]")
             applyVoiceProcessingSetting()
-            setPreferredBluetoothInput()
         case .oldDeviceUnavailable:
             systemLog("Audio device disconnected — in: [\(ins)] out: [\(outs)]")
+            applyVoiceProcessingSetting()
+        case .routeConfigurationChange:
+            setPreferredBluetoothInput()
+            systemLog("Audio route reconfigured — in: [\(ins)] out: [\(outs)]")
             applyVoiceProcessingSetting()
         default:
             break
@@ -428,12 +502,7 @@ final class ConversationService {
     }
 
     private func setPreferredBluetoothInput() {
-        let session = AVAudioSession.sharedInstance()
-        if let btInput = session.availableInputs?.first(where: {
-            $0.portType == .bluetoothHFP
-        }) {
-            try? session.setPreferredInput(btInput)
-        }
+        try? AudioUtilities.preferBluetoothInputIfAvailable()
     }
 
     private func resetRecorders() {

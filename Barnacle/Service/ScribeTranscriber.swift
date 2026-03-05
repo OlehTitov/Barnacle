@@ -65,10 +65,9 @@ final class ScribeTranscriber {
         self.apiKey = apiKey
 
         if !skipAudioSessionSetup {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try AudioUtilities.activateVoiceCaptureSession()
         }
+        try AudioUtilities.preferBluetoothInputIfAvailable()
 
         if vadManager == nil {
             vadManager = try await VadManager(
@@ -80,6 +79,7 @@ final class ScribeTranscriber {
         audioEngine.reset()
 
         let inputNode = audioEngine.inputNode
+        updateVoiceProcessing()
         audioEngine.prepare()
 
         // Use the node's actual format — don't fight internal format bridging
@@ -139,14 +139,8 @@ final class ScribeTranscriber {
         }
 
         try audioEngine.start()
-        updateVoiceProcessing()
 
         let session = AVAudioSession.sharedInstance()
-        if let btInput = session.availableInputs?.first(where: {
-            $0.portType == .bluetoothHFP
-        }) {
-            try session.setPreferredInput(btInput)
-        }
         let route = session.currentRoute
         let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
         let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
@@ -182,6 +176,7 @@ final class ScribeTranscriber {
     func stop() {
         guard state == .recording else { return }
         audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         processingTask?.cancel()
@@ -197,6 +192,10 @@ final class ScribeTranscriber {
     }
 
     func updateVoiceProcessing() {
+        guard !audioEngine.isRunning else {
+            onSystemLog?("VP IO deferred while engine running")
+            return
+        }
         let shouldEnable = AudioUtilities.shouldEnableVoiceProcessing()
         do {
             try audioEngine.inputNode.setVoiceProcessingEnabled(shouldEnable)

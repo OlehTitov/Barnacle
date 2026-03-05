@@ -86,10 +86,9 @@ final class FluidTranscriber {
 
     func start(skipAudioSessionSetup: Bool = false) async throws {
         if !skipAudioSessionSetup {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try AudioUtilities.activateVoiceCaptureSession()
         }
+        try AudioUtilities.preferBluetoothInputIfAvailable()
 
         try await loadModels()
 
@@ -115,6 +114,7 @@ final class FluidTranscriber {
         audioEngine.reset()
 
         let inputNode = audioEngine.inputNode
+        updateVoiceProcessing()
         audioEngine.prepare()
 
         // Use the node's actual format — don't fight internal format bridging
@@ -164,14 +164,8 @@ final class FluidTranscriber {
         }
 
         try audioEngine.start()
-        updateVoiceProcessing()
 
         let session = AVAudioSession.sharedInstance()
-        if let btInput = session.availableInputs?.first(where: {
-            $0.portType == .bluetoothHFP
-        }) {
-            try session.setPreferredInput(btInput)
-        }
         let route = session.currentRoute
         let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
         let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
@@ -214,6 +208,10 @@ final class FluidTranscriber {
     }
 
     func updateVoiceProcessing() {
+        guard !audioEngine.isRunning else {
+            onSystemLog?("VP IO deferred while engine running")
+            return
+        }
         let shouldEnable = AudioUtilities.shouldEnableVoiceProcessing()
         do {
             try audioEngine.inputNode.setVoiceProcessingEnabled(shouldEnable)

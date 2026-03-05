@@ -22,6 +22,9 @@ struct MainView: View {
     @State
     private var showSettings = false
 
+    @State
+    private var stopTask: Task<Void, Never>?
+
     private var appState: AppState {
         switch conversation.phase {
         case .idle, .finished:
@@ -126,12 +129,16 @@ struct MainView: View {
 
         switch conversation.phase {
         case .idle, .finished, .failed:
+            stopTask?.cancel()
+            stopTask = nil
             SFXPlayer.play("startup-sound")
             Task { await conversation.runTurn(config: config) }
         default:
             SFXPlayer.play("power-off")
-            Task {
+            stopTask?.cancel()
+            stopTask = Task {
                 try? await Task.sleep(for: .seconds(2.5))
+                if Task.isCancelled { return }
                 conversation.stopListening()
             }
         }
