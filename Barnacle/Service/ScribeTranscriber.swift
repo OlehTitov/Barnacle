@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+import AVFoundation
 import FluidAudio
 import Foundation
 
@@ -30,7 +31,7 @@ final class ScribeTranscriber {
     private var committedText = ""
     private var currentPartial = ""
     private var webSocketTask: URLSessionWebSocketTask?
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine = AVAudioEngine()
     private var silenceTimer: Timer?
     private var recordingTimer: Timer?
     private var apiKey = ""
@@ -75,7 +76,16 @@ final class ScribeTranscriber {
             )
         }
 
+        // Reset engine to pick up current HW format (may be 8kHz HFP)
+        audioEngine.stop()
+        audioEngine = AVAudioEngine()
+
         let inputNode = audioEngine.inputNode
+
+        // Force the engine to recognize current audio session route
+        audioEngine.prepare()
+
+        // NOW query the format — it reflects the actual HW (8kHz for HFP, 48kHz for built-in)
         let nativeFormat = inputNode.outputFormat(forBus: 0)
 
         let tFormat = AudioUtilities.transcriptionFormat
@@ -85,10 +95,12 @@ final class ScribeTranscriber {
             from: nativeFormat,
             to: tFormat
         ) else {
-            onSystemLog?("Scribe: converter failed")
+            onSystemLog?("Converter failed: HW=\(nativeFormat.sampleRate)Hz → target=\(tFormat.sampleRate)Hz")
             return
         }
         audioConverter = converter
+
+        onSystemLog?("HW format: \(nativeFormat.sampleRate)Hz, \(nativeFormat.channelCount)ch")
 
         vadState = await vadManager!.makeStreamState()
         sampleBuffer.clear()
@@ -118,11 +130,19 @@ final class ScribeTranscriber {
             )
         }
 
-        if !audioEngine.isRunning {
-            audioEngine.prepare()
-            try audioEngine.start()
+        try audioEngine.start()
+
+        let session = AVAudioSession.sharedInstance()
+        if let btInput = session.availableInputs?.first(where: {
+            $0.portType == .bluetoothHFP
+        }) {
+            try session.setPreferredInput(btInput)
         }
-        onSystemLog?("Scribe engine ready")
+        let route = session.currentRoute
+        let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        onSystemLog?("Post-engine route — in: [\(ins)] out: [\(outs)]")
+
         state = .recording
         audioLevel = 0
         silenceProgress = 0

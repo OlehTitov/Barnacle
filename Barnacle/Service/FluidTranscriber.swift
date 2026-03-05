@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
@@ -110,7 +111,16 @@ final class FluidTranscriber {
             }
         }
 
+        // Reset engine to pick up current HW format (may be 8kHz HFP)
+        audioEngine.stop()
+        audioEngine = AVAudioEngine()
+
         let inputNode = audioEngine.inputNode
+
+        // Force the engine to recognize current audio session route
+        audioEngine.prepare()
+
+        // NOW query the format — it reflects the actual HW (8kHz for HFP, 48kHz for built-in)
         let nativeFormat = inputNode.outputFormat(forBus: 0)
 
         let tFormat = AudioUtilities.transcriptionFormat
@@ -120,9 +130,12 @@ final class FluidTranscriber {
             from: nativeFormat,
             to: tFormat
         ) else {
+            onSystemLog?("Converter failed: HW=\(nativeFormat.sampleRate)Hz → target=\(tFormat.sampleRate)Hz")
             return
         }
         audioConverter = converter
+
+        onSystemLog?("HW format: \(nativeFormat.sampleRate)Hz, \(nativeFormat.channelCount)ch")
 
         sampleBuffer.clear()
 
@@ -140,8 +153,18 @@ final class FluidTranscriber {
             }
         }
 
-        audioEngine.prepare()
         try audioEngine.start()
+
+        let session = AVAudioSession.sharedInstance()
+        if let btInput = session.availableInputs?.first(where: {
+            $0.portType == .bluetoothHFP
+        }) {
+            try session.setPreferredInput(btInput)
+        }
+        let route = session.currentRoute
+        let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        onSystemLog?("Post-engine route — in: [\(ins)] out: [\(outs)]")
 
         state = .recording
         audioLevel = 0
