@@ -340,26 +340,36 @@ final class ConversationService {
 
     private func activateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
+
+        // Only add .defaultToSpeaker when no BT is connected
+        // .defaultToSpeaker overrides Bluetooth output routing
+        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP]
+        let hasBluetooth = session.availableInputs?.contains(where: {
+            $0.portType == .bluetoothHFP
+        }) ?? false
+        if !hasBluetooth {
+            options.insert(.defaultToSpeaker)
+        }
+
         try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
-            options: [.allowBluetoothHFP]
+            options: options
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
-        
+
         // Force input+output to Bluetooth HFP if available
-        // Setting preferred input to HFP automatically routes output to HFP too
         if let btInput = session.availableInputs?.first(where: {
             $0.portType == .bluetoothHFP
         }) {
             try session.setPreferredInput(btInput)
         }
-        
+
         let route = session.currentRoute
         let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
         let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
         systemLog("Audio route — in: [\(inputs)] out: [\(outputs)]")
-        
+
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     }
 

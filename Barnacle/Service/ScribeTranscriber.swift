@@ -76,17 +76,25 @@ final class ScribeTranscriber {
             )
         }
 
-        // Reset engine to pick up current HW format (may be 8kHz HFP)
-        audioEngine.stop()
-        audioEngine = AVAudioEngine()
+        // Reset engine to clear stale format cache
+        audioEngine.reset()
 
         let inputNode = audioEngine.inputNode
-
-        // Force the engine to recognize current audio session route
         audioEngine.prepare()
 
-        // NOW query the format — it reflects the actual HW (8kHz for HFP, 48kHz for built-in)
-        let nativeFormat = inputNode.outputFormat(forBus: 0)
+        // Get sample rate from session, not inputNode (reliable for BT HFP)
+        let session = AVAudioSession.sharedInstance()
+        let hwSampleRate = session.sampleRate
+        let hwChannels = AVAudioChannelCount(max(1, session.inputNumberOfChannels))
+        guard let nativeFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: hwSampleRate,
+            channels: hwChannels,
+            interleaved: false
+        ) else {
+            onSystemLog?("Failed to create HW format: \(hwSampleRate)Hz, \(hwChannels)ch")
+            return
+        }
 
         let tFormat = AudioUtilities.transcriptionFormat
         targetFormat = tFormat
@@ -100,13 +108,15 @@ final class ScribeTranscriber {
         }
         audioConverter = converter
 
-        onSystemLog?("HW format: \(nativeFormat.sampleRate)Hz, \(nativeFormat.channelCount)ch")
+        onSystemLog?("HW format: \(hwSampleRate)Hz, \(hwChannels)ch")
 
         vadState = await vadManager!.makeStreamState()
         sampleBuffer.clear()
 
         var chunkCount = 0
         let buffer = sampleBuffer
+        var currentConverter = converter
+        var currentFormat = nativeFormat
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] pcm, _ in
             guard let self else { return }
@@ -114,9 +124,17 @@ final class ScribeTranscriber {
             Task { @MainActor [weak self] in self?.audioLevel = level }
             chunkCount += 1
 
+            // Dynamic converter: recreate if buffer format changed (BT connect/disconnect)
+            if !pcm.format.isEqual(currentFormat) {
+                if let newConv = AVAudioConverter(from: pcm.format, to: tFormat) {
+                    currentConverter = newConv
+                    currentFormat = pcm.format
+                }
+            }
+
             guard let samples = AudioUtilities.convertToMono16kHz(
                 buffer: pcm,
-                converter: converter,
+                converter: currentConverter,
                 targetFormat: tFormat
             ) else { return }
 
@@ -132,7 +150,6 @@ final class ScribeTranscriber {
 
         try audioEngine.start()
 
-        let session = AVAudioSession.sharedInstance()
         if let btInput = session.availableInputs?.first(where: {
             $0.portType == .bluetoothHFP
         }) {

@@ -59,7 +59,9 @@ struct ButtonPlayground: View {
                     .fill(LinearGradient(colors: [.black.opacity(0.7), .black.opacity(0.2), .clear], startPoint: .center, endPoint: .bottom))
                     .frame(width: 78, height: 100)
                     .blur(radius: 3)
+                    //move opacity to 0 when pressed
                     .opacity(0.8)
+                    //move this offset to 0 when pressed
                     .offset(y: 10)
                 Circle()
                     .fill(LinearGradient(colors: [.black.opacity(0.2), .black.opacity(0.1)], startPoint: .top, endPoint: .bottom))
