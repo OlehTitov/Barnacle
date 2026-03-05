@@ -78,6 +78,7 @@ final class VoiceRecorder {
 
         audioEngine.prepare()
         try audioEngine.start()
+        updateVoiceProcessing()
         state = .recording
         audioLevel = 0
         silenceProgress = 0
@@ -89,6 +90,11 @@ final class VoiceRecorder {
         }
 
         startSilenceDetection()
+    }
+
+    func updateVoiceProcessing() {
+        let shouldEnable = AudioUtilities.shouldEnableVoiceProcessing()
+        try? audioEngine.inputNode.setVoiceProcessingEnabled(shouldEnable)
     }
 
     func stopRecording() {

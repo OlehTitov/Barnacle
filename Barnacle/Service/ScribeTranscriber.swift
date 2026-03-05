@@ -82,33 +82,21 @@ final class ScribeTranscriber {
         let inputNode = audioEngine.inputNode
         audioEngine.prepare()
 
-        // Get sample rate from session, not inputNode (reliable for BT HFP)
-        let session = AVAudioSession.sharedInstance()
-        let hwSampleRate = session.sampleRate
-        let hwChannels = AVAudioChannelCount(max(1, session.inputNumberOfChannels))
-        guard let nativeFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: hwSampleRate,
-            channels: hwChannels,
-            interleaved: false
-        ) else {
-            onSystemLog?("Failed to create HW format: \(hwSampleRate)Hz, \(hwChannels)ch")
-            return
-        }
-
+        // Use the node's actual format — don't fight internal format bridging
+        let actualFormat = inputNode.outputFormat(forBus: 0)
         let tFormat = AudioUtilities.transcriptionFormat
         targetFormat = tFormat
 
         guard let converter = AVAudioConverter(
-            from: nativeFormat,
+            from: actualFormat,
             to: tFormat
         ) else {
-            onSystemLog?("Converter failed: HW=\(nativeFormat.sampleRate)Hz → target=\(tFormat.sampleRate)Hz")
+            onSystemLog?("Converter failed: \(actualFormat.sampleRate)Hz → \(tFormat.sampleRate)Hz")
             return
         }
         audioConverter = converter
 
-        onSystemLog?("HW format: \(hwSampleRate)Hz, \(hwChannels)ch")
+        onSystemLog?("HW format: \(actualFormat.sampleRate)Hz, \(actualFormat.channelCount)ch")
 
         vadState = await vadManager!.makeStreamState()
         sampleBuffer.clear()
@@ -116,9 +104,10 @@ final class ScribeTranscriber {
         var chunkCount = 0
         let buffer = sampleBuffer
         var currentConverter = converter
-        var currentFormat = nativeFormat
+        var currentFormat = actualFormat
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] pcm, _ in
+        // Pass nil format — accept whatever the node delivers natively
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] pcm, _ in
             guard let self else { return }
             let level = AudioUtilities.audioLevel(from: pcm)
             Task { @MainActor [weak self] in self?.audioLevel = level }
@@ -129,6 +118,7 @@ final class ScribeTranscriber {
                 if let newConv = AVAudioConverter(from: pcm.format, to: tFormat) {
                     currentConverter = newConv
                     currentFormat = pcm.format
+                    self.onSystemLog?("Converter: \(pcm.format.sampleRate)Hz → 16kHz")
                 }
             }
 
@@ -149,7 +139,9 @@ final class ScribeTranscriber {
         }
 
         try audioEngine.start()
+        updateVoiceProcessing()
 
+        let session = AVAudioSession.sharedInstance()
         if let btInput = session.availableInputs?.first(where: {
             $0.portType == .bluetoothHFP
         }) {
@@ -202,6 +194,17 @@ final class ScribeTranscriber {
         lastCommitDate = nil
         speechEndDate = nil
         state = .stopped
+    }
+
+    func updateVoiceProcessing() {
+        let shouldEnable = AudioUtilities.shouldEnableVoiceProcessing()
+        do {
+            try audioEngine.inputNode.setVoiceProcessingEnabled(shouldEnable)
+            let route = AudioUtilities.currentOutputRoute()
+            onSystemLog?("VP IO: \(shouldEnable ? "on" : "off") (route: \(route))")
+        } catch {
+            onSystemLog?("VP IO error: \(error.localizedDescription)")
+        }
     }
 
     func stopEngine() {

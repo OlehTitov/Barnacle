@@ -36,19 +36,49 @@ BarnacleApp.swift          — App entry, theme, onboarding gate
 
 ```swift
 // ConversationService.swift — activateAudioSession()
+// .defaultToSpeaker is added conditionally — only when NO Bluetooth is connected
 .playAndRecord, mode: .voiceChat,
-options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+options: [.allowBluetoothHFP]  // + .defaultToSpeaker when no BT
 ```
 
-**Why `.voiceChat` mode:** Enables hardware echo cancellation. Without it, the speaker output feeds back into the mic during continuous conversation. DO NOT change to `.default` mode — echo will return.
+**Why `.voiceChat` mode:** Enables hardware echo cancellation via Voice Processing IO (VP IO). Without it, the speaker output feeds back into the mic during continuous conversation. DO NOT change to `.default` mode — echo will return.
 
-**Bluetooth routing:** `.allowBluetoothA2DP` routes media audio to car stereos and Bluetooth speakers. `.allowBluetoothHFP` enables hands-free profile for mic input from car systems. Both are needed for full car Bluetooth support (mic from car, audio to car).
+**Bluetooth routing:** `.allowBluetoothHFP` enables hands-free profile for mic input from car systems. `.defaultToSpeaker` is only added when no Bluetooth is connected — it overrides BT output routing if present.
+
+### Voice Processing IO Toggle
+
+VP IO (software echo cancellation from `.voiceChat` mode) conflicts with Bluetooth HFP's built-in hardware echo cancellation. When both are active, audio is muted or distorted through car speakers.
+
+**Solution:** `AudioUtilities.shouldEnableVoiceProcessing()` returns `false` for Bluetooth/headphones (they have hardware AEC) and `true` for built-in speaker/receiver (needs software AEC). Each transcriber and VoiceRecorder calls `updateVoiceProcessing()` after engine start to toggle VP IO via `audioEngine.inputNode.setVoiceProcessingEnabled()`.
+
+**Rules:**
+- VP IO must be **off** when Bluetooth is the active output
+- VP IO must be **on** when using built-in speaker (no hardware AEC available)
+- `setVoiceProcessingEnabled()` must be called AFTER `audioEngine.start()` — the input node isn't configured before that
+
+### Route Change Observer
+
+`ConversationService` registers for `AVAudioSession.routeChangeNotification` during conversations. On device connect/disconnect:
+- Logs the new route
+- Calls `applyVoiceProcessingSetting()` which finds the active transcriber and toggles VP IO
+- On new BT device: sets preferred input to BT HFP
+
+This handles mid-conversation Bluetooth connect/disconnect (e.g., getting into a car while talking).
 
 **Rules:**
 - NEVER set audio session category in VoiceRecorder, TTSPlayer, StreamingTTSPlayer, or any transcriber when called from ConversationService
 - The `skipAudioSessionSetup` parameter exists specifically for this — always pass `true` from ConversationService
 - VoiceRecorder has its own session setup ONLY for standalone use outside ConversationService
 - If audio routing breaks, check here FIRST — it's almost always a session category/mode issue
+
+### Bluetooth Audio Lessons Learned
+
+- `.defaultToSpeaker` overrides BT output — only use when no BT is connected
+- `.voiceChat` mode's VP IO fights BT HFP's echo cancellation — must disable VP IO for BT
+- `.allowBluetoothA2DP` is NOT used — HFP handles both mic and speaker in car mode
+- `setPreferredInput(.bluetoothHFP)` must be called after engine start, not before
+- Audio tap format changes dynamically on BT connect/disconnect — dynamic converter in tap handles this
+- Test with: `AVAudioSession.sharedInstance().currentRoute` to inspect active ports
 
 ## Transcription Engines
 

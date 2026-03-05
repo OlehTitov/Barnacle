@@ -27,6 +27,33 @@ enum AudioUtilities {
         return normalizeDecibels(db)
     }
 
+    static func currentOutputRoute() -> AudioOutputRoute {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        guard let port = outputs.first else { return .other }
+        switch port.portType {
+        case .builtInSpeaker:
+            return .builtInSpeaker
+        case .builtInReceiver:
+            return .builtInReceiver
+        case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
+            return .bluetooth
+        case .headphones, .headsetMic:
+            return .headphones
+        default:
+            return .other
+        }
+    }
+
+    static func shouldEnableVoiceProcessing() -> Bool {
+        let route = currentOutputRoute()
+        switch route {
+        case .bluetooth, .headphones:
+            return false
+        case .builtInSpeaker, .builtInReceiver, .other:
+            return true
+        }
+    }
+
     static var transcriptionFormat: AVAudioFormat {
         AVAudioFormat(
             commonFormat: .pcmFormatFloat32,

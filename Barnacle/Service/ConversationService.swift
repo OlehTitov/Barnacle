@@ -36,6 +36,8 @@ final class ConversationService {
 
     private var stopRequested = false
 
+    private var routeChangeObserver: (any NSObjectProtocol)?
+
     private func systemLog(_ text: String) {
         messages.append(MessageModel(role: .system, text: text))
     }
@@ -55,6 +57,7 @@ final class ConversationService {
         fluidTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         do {
             try activateAudioSession()
+            startRouteChangeObserver()
             systemLog("Audio session active")
 
             if playGreeting && GreetingCacheService.isCached {
@@ -79,6 +82,7 @@ final class ConversationService {
             phase = .failed(error.localizedDescription)
         }
 
+        stopRouteChangeObserver()
         resetRecorders()
         scribeTranscriber.stopEngine()
         systemLog("Stopped")
@@ -371,6 +375,65 @@ final class ConversationService {
         systemLog("Audio route — in: [\(inputs)] out: [\(outputs)]")
 
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
+    }
+
+    private func startRouteChangeObserver() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
+    }
+
+    private func stopRouteChangeObserver() {
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
+        else { return }
+
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute
+        let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
+
+        switch reason {
+        case .newDeviceAvailable:
+            systemLog("Audio device connected — in: [\(ins)] out: [\(outs)]")
+            applyVoiceProcessingSetting()
+            setPreferredBluetoothInput()
+        case .oldDeviceUnavailable:
+            systemLog("Audio device disconnected — in: [\(ins)] out: [\(outs)]")
+            applyVoiceProcessingSetting()
+        default:
+            break
+        }
+    }
+
+    private func applyVoiceProcessingSetting() {
+        if fluidTranscriber.state == .recording {
+            fluidTranscriber.updateVoiceProcessing()
+        } else if scribeTranscriber.state == .recording {
+            scribeTranscriber.updateVoiceProcessing()
+        } else if recorder.state == .recording {
+            recorder.updateVoiceProcessing()
+        }
+    }
+
+    private func setPreferredBluetoothInput() {
+        let session = AVAudioSession.sharedInstance()
+        if let btInput = session.availableInputs?.first(where: {
+            $0.portType == .bluetoothHFP
+        }) {
+            try? session.setPreferredInput(btInput)
+        }
     }
 
     private func resetRecorders() {
