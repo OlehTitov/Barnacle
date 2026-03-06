@@ -59,15 +59,20 @@ final class ScribeTranscriber {
         )
     }
 
-    func start(apiKey: String, eouTimeout: TimeInterval = 2.0, skipAudioSessionSetup: Bool = false) async throws {
+    func start(
+        apiKey: String,
+        eouTimeout: TimeInterval = 2.0,
+        skipAudioSessionSetup: Bool = false,
+        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+    ) async throws {
         self.eouTimeout = eouTimeout
 
         self.apiKey = apiKey
 
         if !skipAudioSessionSetup {
-            try AudioUtilities.activateVoiceCaptureSession()
+            try AudioUtilities.activateVoiceCaptureSession(routingMode: audioRoutingMode)
         }
-        try AudioUtilities.preferBluetoothInputIfAvailable()
+        try AudioUtilities.applyPreferredInput(for: audioRoutingMode)
 
         if vadManager == nil {
             vadManager = try await VadManager(

@@ -47,6 +47,8 @@ final class ConversationService {
 
     private var routeChangeObserver: (any NSObjectProtocol)?
 
+    private var currentAudioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+
     private func systemLog(_ text: String) {
         messages.append(MessageModel(role: .system, text: text))
     }
@@ -61,6 +63,7 @@ final class ConversationService {
 
     func runTurn(config: AppConfig, playGreeting: Bool = false) async {
         stopRequested = false
+        currentAudioRoutingMode = config.audioRoutingMode
         scribeTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         streamingTTS.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         fluidTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
@@ -68,6 +71,7 @@ final class ConversationService {
             try activateAudioSession()
             startRouteChangeObserver()
             systemLog("Audio session active")
+            systemLog("Audio routing mode — \(currentAudioRoutingMode.label)")
 
             if playGreeting && GreetingCacheService.isCached {
                 phase = .greeting
@@ -158,7 +162,10 @@ final class ConversationService {
     }
 
     private func listenFluid() async throws -> String {
-        try await fluidTranscriber.start(skipAudioSessionSetup: true)
+        try await fluidTranscriber.start(
+            skipAudioSessionSetup: true,
+            audioRoutingMode: currentAudioRoutingMode
+        )
 
         startLiveUpdates(engine: .fluid)
 
@@ -176,7 +183,10 @@ final class ConversationService {
         }
 
         transcriber.cancel()
-        try recorder.startRecording(skipAudioSessionSetup: true)
+        try recorder.startRecording(
+            skipAudioSessionSetup: true,
+            audioRoutingMode: currentAudioRoutingMode
+        )
 
         startLiveUpdates(engine: .apple)
 
@@ -257,7 +267,8 @@ final class ConversationService {
         try await scribeTranscriber.start(
             apiKey: config.elevenLabsAPIKey,
             eouTimeout: config.eouTimeout,
-            skipAudioSessionSetup: true
+            skipAudioSessionSetup: true,
+            audioRoutingMode: currentAudioRoutingMode
         )
 
         startLiveUpdates(engine: .scribe)
@@ -270,7 +281,11 @@ final class ConversationService {
     }
 
     private func listenWhisper(config: AppConfig) async throws -> String {
-        try recorder.startRecording(saveToFile: true, skipAudioSessionSetup: true)
+        try recorder.startRecording(
+            saveToFile: true,
+            skipAudioSessionSetup: true,
+            audioRoutingMode: currentAudioRoutingMode
+        )
 
         startLiveUpdates(engine: .whisper)
 
@@ -436,13 +451,15 @@ final class ConversationService {
     }
 
     private func activateAudioSession() throws {
-        try AudioUtilities.activateVoiceCaptureSession()
+        try AudioUtilities.activateVoiceCaptureSession(routingMode: currentAudioRoutingMode)
 
         let session = AVAudioSession.sharedInstance()
         let route = session.currentRoute
         let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
         let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
+        let availableInputs = session.availableInputs?.map { $0.portType.rawValue }.joined(separator: ", ") ?? "none"
         systemLog("Audio route — in: [\(inputs)] out: [\(outputs)]")
+        systemLog("Available inputs — [\(availableInputs)]")
 
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     }
@@ -469,22 +486,15 @@ final class ConversationService {
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        let session = AVAudioSession.sharedInstance()
-        let route = session.currentRoute
-        let ins = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
-        let outs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
-
         switch reason {
         case .newDeviceAvailable:
-            setPreferredBluetoothInput()
-            systemLog("Audio device connected — in: [\(ins)] out: [\(outs)]")
+            refreshAudioSessionRouting(message: "Audio device connected")
             applyVoiceProcessingSetting()
         case .oldDeviceUnavailable:
-            systemLog("Audio device disconnected — in: [\(ins)] out: [\(outs)]")
+            refreshAudioSessionRouting(message: "Audio device disconnected")
             applyVoiceProcessingSetting()
         case .routeConfigurationChange:
-            setPreferredBluetoothInput()
-            systemLog("Audio route reconfigured — in: [\(ins)] out: [\(outs)]")
+            refreshAudioSessionRouting(message: "Audio route reconfigured")
             applyVoiceProcessingSetting()
         default:
             break
@@ -501,8 +511,20 @@ final class ConversationService {
         }
     }
 
-    private func setPreferredBluetoothInput() {
-        try? AudioUtilities.preferBluetoothInputIfAvailable()
+    private func refreshAudioSessionRouting(message: String) {
+        do {
+            try AudioUtilities.activateVoiceCaptureSession(routingMode: currentAudioRoutingMode)
+        } catch {
+            systemLog("\(message) — reroute failed: \(error.localizedDescription)")
+        }
+
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute
+        let inputs = route.inputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        let outputs = route.outputs.map { $0.portType.rawValue }.joined(separator: ", ")
+        let availableInputs = session.availableInputs?.map { $0.portType.rawValue }.joined(separator: ", ") ?? "none"
+        systemLog("\(message) — in: [\(inputs)] out: [\(outputs)]")
+        systemLog("Available inputs — [\(availableInputs)]")
     }
 
     private func resetRecorders() {

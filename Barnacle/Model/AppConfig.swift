@@ -36,6 +36,8 @@ final class AppConfig {
 
     var eouTimeout: Double
 
+    var audioRoutingMode: AudioRoutingMode
+
     init() {
         self.ttsProvider = TTSProvider(
             rawValue: UserDefaults.standard.string(forKey: "ttsProvider") ?? ""
@@ -76,6 +78,9 @@ final class AppConfig {
         self.showDebugMessages = UserDefaults.standard.bool(forKey: "showDebugMessages")
         self.eouTimeout = UserDefaults.standard.object(forKey: "eouTimeout") != nil
             ? UserDefaults.standard.double(forKey: "eouTimeout") : 2.0
+        self.audioRoutingMode = AudioRoutingMode(
+            rawValue: UserDefaults.standard.string(forKey: "audioRoutingMode") ?? ""
+        ) ?? .nativeCarBluetooth
 
         if let data = KeychainStore.load(key: "gatewayURL"),
            let value = String(data: data, encoding: .utf8)
@@ -171,6 +176,7 @@ final class AppConfig {
         UserDefaults.standard.set(visualTheme.rawValue, forKey: "visualTheme")
         UserDefaults.standard.set(showDebugMessages, forKey: "showDebugMessages")
         UserDefaults.standard.set(eouTimeout, forKey: "eouTimeout")
+        UserDefaults.standard.set(audioRoutingMode.rawValue, forKey: "audioRoutingMode")
 
         if let data = gatewayURL.data(using: .utf8) {
             KeychainStore.save(key: "gatewayURL", data: data)

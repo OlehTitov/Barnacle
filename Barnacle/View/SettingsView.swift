@@ -88,6 +88,9 @@ struct SettingsView: View {
     private var eouTimeout: Double = 2.0
 
     @State
+    private var audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+
+    @State
     private var isGeneratingGreeting = false
 
     @State
@@ -184,6 +187,18 @@ struct SettingsView: View {
                     }
                     Slider(value: $eouTimeout, in: 0.5...5.0, step: 0.5)
                 }
+            }
+
+            Section("Audio Routing") {
+                Picker("Car Audio", selection: $audioRoutingMode) {
+                    ForEach(AudioRoutingMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+
+                Text(audioRoutingMode.helperText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Voice") {
@@ -337,6 +352,7 @@ struct SettingsView: View {
                     config.visualTheme = visualTheme
                     config.showDebugMessages = showDebugMessages
                     config.eouTimeout = eouTimeout
+                    config.audioRoutingMode = audioRoutingMode
                     config.save()
                     dismiss()
                 }
@@ -369,6 +385,7 @@ struct SettingsView: View {
             visualTheme = config.visualTheme
             showDebugMessages = config.showDebugMessages
             eouTimeout = config.eouTimeout
+            audioRoutingMode = config.audioRoutingMode
         }
     }
 

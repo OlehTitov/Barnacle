@@ -84,11 +84,14 @@ final class FluidTranscriber {
         }
     }
 
-    func start(skipAudioSessionSetup: Bool = false) async throws {
+    func start(
+        skipAudioSessionSetup: Bool = false,
+        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+    ) async throws {
         if !skipAudioSessionSetup {
-            try AudioUtilities.activateVoiceCaptureSession()
+            try AudioUtilities.activateVoiceCaptureSession(routingMode: audioRoutingMode)
         }
-        try AudioUtilities.preferBluetoothInputIfAvailable()
+        try AudioUtilities.applyPreferredInput(for: audioRoutingMode)
 
         try await loadModels()
 

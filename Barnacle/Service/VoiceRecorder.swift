@@ -34,11 +34,15 @@ final class VoiceRecorder {
     private let silenceDuration: TimeInterval = 3.0
     private let maxRecordingDuration: TimeInterval = 60
 
-    func startRecording(saveToFile: Bool = false, skipAudioSessionSetup: Bool = false) throws {
+    func startRecording(
+        saveToFile: Bool = false,
+        skipAudioSessionSetup: Bool = false,
+        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+    ) throws {
         if !skipAudioSessionSetup {
-            try AudioUtilities.activateVoiceCaptureSession()
+            try AudioUtilities.activateVoiceCaptureSession(routingMode: audioRoutingMode)
         }
-        try AudioUtilities.preferBluetoothInputIfAvailable()
+        try AudioUtilities.applyPreferredInput(for: audioRoutingMode)
 
         let inputNode = audioEngine.inputNode
         updateVoiceProcessing()

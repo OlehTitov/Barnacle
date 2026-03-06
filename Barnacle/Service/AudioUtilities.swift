@@ -9,29 +9,59 @@
 
 enum AudioUtilities {
 
-    static func activateVoiceCaptureSession() throws {
+    static func activateVoiceCaptureSession(
+        routingMode: AudioRoutingMode = .nativeCarBluetooth
+    ) throws {
         let session = AVAudioSession.sharedInstance()
-        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP]
-        if preferredBluetoothInput(in: session) == nil {
-            options.insert(.defaultToSpeaker)
-        }
+        switch routingMode {
+        case .nativeCarBluetooth:
+            try session.setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.allowBluetoothHFP, .defaultToSpeaker]
+            )
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
 
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: options
-        )
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-        try preferBluetoothInputIfAvailable(in: session)
+            if let input = preferredBluetoothInput(in: session) {
+                try session.setCategory(
+                    .playAndRecord,
+                    mode: .voiceChat,
+                    options: [.allowBluetoothHFP]
+                )
+                try session.setActive(true)
+                try session.setPreferredInput(input)
+            } else {
+                try session.setPreferredInput(nil)
+            }
+
+        case .bluetoothAdapter:
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.allowBluetoothA2DP, .defaultToSpeaker]
+            )
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.setPreferredInput(nil)
+        }
     }
 
     @discardableResult
-    static func preferBluetoothInputIfAvailable(
+    static func applyPreferredInput(
+        for routingMode: AudioRoutingMode,
         in session: AVAudioSession = .sharedInstance()
     ) throws -> Bool {
-        guard let input = preferredBluetoothInput(in: session) else { return false }
-        try session.setPreferredInput(input)
-        return true
+        switch routingMode {
+        case .nativeCarBluetooth:
+            guard let input = preferredBluetoothInput(in: session) else {
+                try session.setPreferredInput(nil)
+                return false
+            }
+            try session.setPreferredInput(input)
+            return true
+        case .bluetoothAdapter:
+            try session.setPreferredInput(nil)
+            return false
+        }
     }
 
     nonisolated static func normalizeDecibels(_ db: Float) -> Float {
