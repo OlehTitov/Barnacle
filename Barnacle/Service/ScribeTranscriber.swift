@@ -50,7 +50,9 @@ final class ScribeTranscriber {
     private var lastCommitDate: Date?
     private var hasPartialText = false
     private var speechEndDate: Date?
-    private let partialEouTimeout: TimeInterval = 1.5
+    private var partialEouTimeout: TimeInterval = 1.5
+    private var initialSilenceTimeout: TimeInterval = 5.0
+    private var recordingStartDate: Date?
 
     func prepareVad() async throws {
         guard vadManager == nil else { return }
@@ -66,6 +68,8 @@ final class ScribeTranscriber {
         audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
     ) async throws {
         self.eouTimeout = eouTimeout
+        self.partialEouTimeout = max(0.5, eouTimeout)
+        self.initialSilenceTimeout = max(2.0, eouTimeout * 2)
 
         self.apiKey = apiKey
 
@@ -160,6 +164,7 @@ final class ScribeTranscriber {
         lastScribeActivityDate = nil
         lastCommitDate = nil
         speechEndDate = nil
+        recordingStartDate = Date()
         displayText = ""
         committedText = ""
         currentPartial = ""
@@ -193,6 +198,7 @@ final class ScribeTranscriber {
         lastScribeActivityDate = nil
         lastCommitDate = nil
         speechEndDate = nil
+        recordingStartDate = nil
         state = .stopped
     }
 
@@ -241,7 +247,10 @@ final class ScribeTranscriber {
             URLQueryItem(name: "model_id", value: "scribe_v2_realtime"),
             URLQueryItem(name: "audio_format", value: "pcm_16000"),
             URLQueryItem(name: "commit_strategy", value: "vad"),
-            URLQueryItem(name: "vad_silence_threshold_secs", value: "1.5")
+            URLQueryItem(
+                name: "vad_silence_threshold_secs",
+                value: String(format: "%.2f", eouTimeout)
+            )
         ]
 
         var request = URLRequest(url: components.url!)
@@ -250,6 +259,7 @@ final class ScribeTranscriber {
         webSocketTask = URLSession.shared.webSocketTask(with: request)
         webSocketTask?.resume()
         onSystemLog?("Scribe WS connected")
+        onSystemLog?("Scribe provider VAD: \(String(format: "%.2f", eouTimeout))s")
         receiveMessage()
     }
 
@@ -421,6 +431,12 @@ final class ScribeTranscriber {
                     return
                 }
                 self.silenceProgress = min(1, elapsed / self.partialEouTimeout)
+            } else if let start = self.recordingStartDate {
+                let elapsed = now.timeIntervalSince(start)
+                if elapsed >= self.initialSilenceTimeout {
+                    self.onSystemLog?("Scribe: EOU (no speech)")
+                    self.stop()
+                }
             } else {
                 self.silenceProgress = 0
             }

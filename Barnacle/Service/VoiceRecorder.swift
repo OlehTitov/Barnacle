@@ -27,22 +27,27 @@ final class VoiceRecorder {
     private var recordingTimer: Timer?
     private var currentPowerLevel: Float = -160
     private var silenceStartDate: Date?
+    private var recordingStartDate: Date?
     private var hasSpoken = false
     private var speechFrameCount = 0
     private let speechFrameThreshold = 3
     private let silenceThreshold: Float = -40
-    private let silenceDuration: TimeInterval = 3.0
+    private var silenceDuration: TimeInterval = 2.0
+    private var initialSilenceTimeout: TimeInterval = 5.0
     private let maxRecordingDuration: TimeInterval = 60
 
     func startRecording(
         saveToFile: Bool = false,
         skipAudioSessionSetup: Bool = false,
-        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth,
+        eouTimeout: TimeInterval = 2.0
     ) throws {
         if !skipAudioSessionSetup {
             try AudioUtilities.activateVoiceCaptureSession(routingMode: audioRoutingMode)
         }
         try AudioUtilities.applyPreferredInput(for: audioRoutingMode)
+        silenceDuration = max(0.5, eouTimeout)
+        initialSilenceTimeout = max(2.0, eouTimeout * 2)
 
         let inputNode = audioEngine.inputNode
         updateVoiceProcessing()
@@ -83,6 +88,7 @@ final class VoiceRecorder {
         silenceProgress = 0
         hasSpoken = false
         speechFrameCount = 0
+        recordingStartDate = Date()
 
         recordingTimer = Timer.scheduledTimer(withTimeInterval: maxRecordingDuration, repeats: false) { [weak self] _ in
             self?.stopRecording()
@@ -108,6 +114,7 @@ final class VoiceRecorder {
         recordingTimer?.invalidate()
         recordingTimer = nil
         silenceStartDate = nil
+        recordingStartDate = nil
         state = .stopped
     }
 
@@ -167,6 +174,11 @@ final class VoiceRecorder {
                     if elapsed >= self.silenceDuration {
                         self.stopRecording()
                     }
+                }
+            } else if let start = self.recordingStartDate {
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed >= self.initialSilenceTimeout {
+                    self.stopRecording()
                 }
             }
         }

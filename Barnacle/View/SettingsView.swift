@@ -180,12 +180,15 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading) {
                     HStack {
-                        Text("EOU Silence")
+                        Text("Trailing Silence")
                         Spacer()
                         Text(String(format: "%.1fs", eouTimeout))
                             .foregroundStyle(.secondary)
                     }
                     Slider(value: $eouTimeout, in: 0.5...5.0, step: 0.5)
+                    Text("Ends a turn after this much silence once speech has started. No-speech timeout is longer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 

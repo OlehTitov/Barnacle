@@ -49,6 +49,8 @@ final class ConversationService {
 
     private var currentAudioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
 
+    private var currentEouTimeout: TimeInterval = 2.0
+
     private func systemLog(_ text: String) {
         messages.append(MessageModel(role: .system, text: text))
     }
@@ -64,6 +66,7 @@ final class ConversationService {
     func runTurn(config: AppConfig, playGreeting: Bool = false) async {
         stopRequested = false
         currentAudioRoutingMode = config.audioRoutingMode
+        currentEouTimeout = max(0.5, config.eouTimeout)
         scribeTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         streamingTTS.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
         fluidTranscriber.onSystemLog = { [weak self] msg in self?.systemLog(msg) }
@@ -164,7 +167,8 @@ final class ConversationService {
     private func listenFluid() async throws -> String {
         try await fluidTranscriber.start(
             skipAudioSessionSetup: true,
-            audioRoutingMode: currentAudioRoutingMode
+            audioRoutingMode: currentAudioRoutingMode,
+            eouTimeout: currentEouTimeout
         )
 
         startLiveUpdates(engine: .fluid)
@@ -185,7 +189,8 @@ final class ConversationService {
         transcriber.cancel()
         try recorder.startRecording(
             skipAudioSessionSetup: true,
-            audioRoutingMode: currentAudioRoutingMode
+            audioRoutingMode: currentAudioRoutingMode,
+            eouTimeout: currentEouTimeout
         )
 
         startLiveUpdates(engine: .apple)
@@ -284,7 +289,8 @@ final class ConversationService {
         try recorder.startRecording(
             saveToFile: true,
             skipAudioSessionSetup: true,
-            audioRoutingMode: currentAudioRoutingMode
+            audioRoutingMode: currentAudioRoutingMode,
+            eouTimeout: currentEouTimeout
         )
 
         startLiveUpdates(engine: .whisper)

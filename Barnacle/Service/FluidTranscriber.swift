@@ -34,7 +34,10 @@ final class FluidTranscriber {
     private var targetFormat: AVAudioFormat?
     private var isSpeechActive = false
     private var silenceStartDate: Date?
-    private let vadSilenceDuration: TimeInterval = 3.0
+    private var vadSilenceDuration: TimeInterval = 2.0
+    private var initialSilenceTimeout: TimeInterval = 5.0
+    private var recordingStartDate: Date?
+    private var configuredEouDebounceMs: Int = 1280
     private var silenceTimer: Timer?
     private var recordingTimer: Timer?
     private let maxRecordingDuration: TimeInterval = 60
@@ -86,14 +89,19 @@ final class FluidTranscriber {
 
     func start(
         skipAudioSessionSetup: Bool = false,
-        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth
+        audioRoutingMode: AudioRoutingMode = .nativeCarBluetooth,
+        eouTimeout: TimeInterval = 2.0
     ) async throws {
         if !skipAudioSessionSetup {
             try AudioUtilities.activateVoiceCaptureSession(routingMode: audioRoutingMode)
         }
         try AudioUtilities.applyPreferredInput(for: audioRoutingMode)
+        vadSilenceDuration = max(0.5, eouTimeout)
+        initialSilenceTimeout = max(2.0, eouTimeout * 2)
+        configuredEouDebounceMs = Int(vadSilenceDuration * 1000)
 
         try await loadModels()
+        await asrManager?.configureEouDebounce(milliseconds: configuredEouDebounceMs)
 
         vadState = await vadManager!.makeStreamState()
         await asrManager!.reset()
@@ -112,6 +120,8 @@ final class FluidTranscriber {
                 self.stop()
             }
         }
+
+        onSystemLog?("Fluid EOU debounce: \(configuredEouDebounceMs)ms")
 
         // Reset engine to clear stale format cache
         audioEngine.reset()
@@ -179,6 +189,7 @@ final class FluidTranscriber {
         silenceProgress = 0
         isSpeechActive = false
         silenceStartDate = nil
+        recordingStartDate = Date()
         displayText = ""
         finalTranscript = ""
 
@@ -207,6 +218,7 @@ final class FluidTranscriber {
         recordingTimer?.invalidate()
         recordingTimer = nil
         silenceStartDate = nil
+        recordingStartDate = nil
         state = .stopped
     }
 
@@ -317,7 +329,19 @@ final class FluidTranscriber {
                         }
                     }
                 }
+            } else if let start = self.recordingStartDate {
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed >= self.initialSilenceTimeout {
+                    self.stop()
+                }
             }
         }
+    }
+}
+
+private extension StreamingEouAsrManager {
+
+    func configureEouDebounce(milliseconds: Int) {
+        eouDebounceMs = milliseconds
     }
 }
