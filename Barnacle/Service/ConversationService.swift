@@ -188,7 +188,7 @@ final class ConversationService {
 
         transcriber.cancel()
         try recorder.startRecording(
-            skipAudioSessionSetup: true,
+            skipAudioSessionSetup: false,
             audioRoutingMode: currentAudioRoutingMode,
             eouTimeout: currentEouTimeout
         )
@@ -233,14 +233,25 @@ final class ConversationService {
                 return .fallback(partial)
             }
 
-            let outcome = await group.next() ?? .fallback("")
-            group.cancelAll()
+            var pendingFailure: (any Error)?
 
-            if case .fallback = outcome {
-                transcriber.cancel()
+            while let next = await group.next() {
+                switch next {
+                case .transcript:
+                    group.cancelAll()
+                    return next
+                case .fallback(let text):
+                    group.cancelAll()
+                    if text.isEmpty, let pendingFailure {
+                        return .failure(pendingFailure)
+                    }
+                    return .fallback(text)
+                case .failure(let error):
+                    pendingFailure = error
+                }
             }
 
-            return outcome
+            return pendingFailure.map { .failure($0) } ?? .fallback("")
         }
 
         let lastPartial = transcriber.partialResult
@@ -264,8 +275,32 @@ final class ConversationService {
                 systemLog("Apple Speech: falling back to partial transcript after error: \(error.localizedDescription)")
                 return lastPartial
             }
+            if isNoSpeechAppleError(error) {
+                systemLog("Apple Speech: no speech detected")
+                return ""
+            }
+            if isTransientAppleSpeechError(error) {
+                systemLog("Apple Speech: transient local recognition error")
+                return ""
+            }
             throw error
         }
+    }
+
+    private func isTransientAppleSpeechError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1101
+    }
+
+    private func isNoSpeechAppleError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.localizedDescription.localizedCaseInsensitiveContains("no speech detected") {
+            return true
+        }
+        if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1110 {
+            return true
+        }
+        return false
     }
 
     private func listenScribe(config: AppConfig) async throws -> String {
@@ -492,6 +527,10 @@ final class ConversationService {
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
+        if !didAudioRouteActuallyChange(notification) {
+            return
+        }
+
         switch reason {
         case .newDeviceAvailable:
             refreshAudioSessionRouting(message: "Audio device connected")
@@ -505,6 +544,23 @@ final class ConversationService {
         default:
             break
         }
+    }
+
+    private func didAudioRouteActuallyChange(_ notification: Notification) -> Bool {
+        guard let previousRoute = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey]
+            as? AVAudioSessionRouteDescription
+        else {
+            return true
+        }
+
+        let currentRoute = AVAudioSession.sharedInstance().currentRoute
+        return routeSignature(previousRoute) != routeSignature(currentRoute)
+    }
+
+    private func routeSignature(_ route: AVAudioSessionRouteDescription) -> String {
+        let inputs = route.inputs.map { "\($0.portType.rawValue):\($0.uid)" }.joined(separator: "|")
+        let outputs = route.outputs.map { "\($0.portType.rawValue):\($0.uid)" }.joined(separator: "|")
+        return "in[\(inputs)]out[\(outputs)]"
     }
 
     private func applyVoiceProcessingSetting() {

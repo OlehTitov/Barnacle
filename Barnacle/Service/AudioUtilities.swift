@@ -17,7 +17,7 @@ enum AudioUtilities {
         case .nativeCarBluetooth:
             try session.setCategory(
                 .playAndRecord,
-                mode: .voiceChat,
+                mode: .default,
                 options: [.allowBluetoothHFP, .defaultToSpeaker]
             )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -31,6 +31,12 @@ enum AudioUtilities {
                 try session.setActive(true)
                 try session.setPreferredInput(input)
             } else {
+                try session.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    options: [.defaultToSpeaker]
+                )
+                try session.setActive(true)
                 try session.setPreferredInput(nil)
             }
 
@@ -103,13 +109,7 @@ enum AudioUtilities {
     }
 
     static func shouldEnableVoiceProcessing() -> Bool {
-        let route = currentOutputRoute()
-        switch route {
-        case .bluetooth, .headphones:
-            return false
-        case .builtInSpeaker, .builtInReceiver, .other:
-            return true
-        }
+        false
     }
 
     static var transcriptionFormat: AVAudioFormat {

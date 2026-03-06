@@ -12,7 +12,7 @@ final class Transcriber {
 
     private(set) var partialResult: String = ""
 
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionTask: SFSpeechRecognitionTask?
 
     static func requestAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -24,7 +24,10 @@ final class Transcriber {
     }
 
     func transcribe(request: SFSpeechAudioBufferRecognitionRequest) async throws -> String {
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        speechRecognizer = recognizer
+
+        guard let recognizer, recognizer.isAvailable else {
             throw TranscriberError.unavailable
         }
 
@@ -50,6 +53,7 @@ final class Transcriber {
     func cancel() {
         recognitionTask?.cancel()
         recognitionTask = nil
+        speechRecognizer = nil
         partialResult = ""
     }
 }

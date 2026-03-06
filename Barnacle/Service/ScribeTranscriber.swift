@@ -53,6 +53,11 @@ final class ScribeTranscriber {
     private var partialEouTimeout: TimeInterval = 1.5
     private var initialSilenceTimeout: TimeInterval = 5.0
     private var recordingStartDate: Date?
+    private var isWebSocketReady = false
+    private var isDrainingOutboundAudio = false
+    private let outboundAudioLock = NSLock()
+    private var outboundAudioChunks: [Data] = []
+    private let maxBufferedAudioChunks = 48
 
     func prepareVad() async throws {
         guard vadManager == nil else { return }
@@ -109,8 +114,9 @@ final class ScribeTranscriber {
 
         vadState = await vadManager!.makeStreamState()
         sampleBuffer.clear()
+        resetOutboundAudio()
+        connectWebSocket()
 
-        var chunkCount = 0
         let buffer = sampleBuffer
         var currentConverter = converter
         var currentFormat = actualFormat
@@ -120,7 +126,6 @@ final class ScribeTranscriber {
             guard let self else { return }
             let level = AudioUtilities.audioLevel(from: pcm)
             Task { @MainActor [weak self] in self?.audioLevel = level }
-            chunkCount += 1
 
             // Dynamic converter: recreate if buffer format changed (BT connect/disconnect)
             if !pcm.format.isEqual(currentFormat) {
@@ -138,13 +143,7 @@ final class ScribeTranscriber {
             ) else { return }
 
             buffer.append(samples)
-
-            guard self.webSocketTask != nil else { return }
-            Self.sendSamples(
-                samples,
-                webSocketTask: self.webSocketTask,
-                chunkIndex: chunkCount
-            )
+            self.enqueueAudioForScribe(samples)
         }
 
         try audioEngine.start()
@@ -199,6 +198,7 @@ final class ScribeTranscriber {
         lastCommitDate = nil
         speechEndDate = nil
         recordingStartDate = nil
+        resetOutboundAudio()
         state = .stopped
     }
 
@@ -235,10 +235,12 @@ final class ScribeTranscriber {
         lastScribeActivityDate = nil
         lastCommitDate = nil
         speechEndDate = nil
+        resetOutboundAudio()
     }
 
     private func connectWebSocket() {
         guard webSocketTask == nil else { return }
+        isWebSocketReady = false
 
         var components = URLComponents(
             string: "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
@@ -278,6 +280,7 @@ final class ScribeTranscriber {
                 }
                 self.receiveMessage()
             case .failure(let error):
+                guard self.state == .recording else { return }
                 self.onSystemLog?("Scribe WS error: \(error.localizedDescription)")
                 break
             }
@@ -293,6 +296,8 @@ final class ScribeTranscriber {
             guard let self else { return }
             switch messageType {
             case "session_started":
+                self.onSystemLog?("Scribe session ready")
+                self.handleWebSocketReady()
                 break
             case "partial_transcript":
                 if let partialText = json["text"] as? String {
@@ -320,11 +325,7 @@ final class ScribeTranscriber {
         }
     }
 
-    private nonisolated static func sendSamples(
-        _ samples: [Float],
-        webSocketTask: URLSessionWebSocketTask?,
-        chunkIndex: Int = 0
-    ) {
+    private nonisolated static func pcm16Data(from samples: [Float]) -> Data {
         let count = samples.count
         var int16Data = Data(count: count * 2)
         int16Data.withUnsafeMutableBytes { rawPtr in
@@ -334,13 +335,13 @@ final class ScribeTranscriber {
                 ptr[i] = Int16(sample * Float(Int16.max))
             }
         }
+        return int16Data
+    }
 
-        let base64 = int16Data.base64EncodedString()
+    private nonisolated static func audioChunkMessage(from pcmData: Data) -> URLSessionWebSocketTask.Message {
+        let base64 = pcmData.base64EncodedString()
         let json = "{\"message_type\":\"input_audio_chunk\",\"audio_base_64\":\"\(base64)\"}"
-
-        Task {
-            try? await webSocketTask?.send(.string(json))
-        }
+        return .string(json)
     }
 
     private func processAudioLoop() async {
@@ -375,7 +376,6 @@ final class ScribeTranscriber {
                 switch event.kind {
                 case .speechStart:
                     isSpeechActive = true
-                    connectWebSocket()
                     onSystemLog?("Scribe: speech detected")
                 case .speechEnd:
                     isSpeechActive = false
@@ -441,5 +441,83 @@ final class ScribeTranscriber {
                 self.silenceProgress = 0
             }
         }
+    }
+
+    private func enqueueAudioForScribe(_ samples: [Float]) {
+        let pcmData = Self.pcm16Data(from: samples)
+        var shouldStartDrain = false
+        outboundAudioLock.lock()
+        outboundAudioChunks.append(pcmData)
+        if !isWebSocketReady {
+            if outboundAudioChunks.count > maxBufferedAudioChunks {
+                outboundAudioChunks.removeFirst(outboundAudioChunks.count - maxBufferedAudioChunks)
+            }
+        } else if !isDrainingOutboundAudio {
+            isDrainingOutboundAudio = true
+            shouldStartDrain = true
+        }
+        outboundAudioLock.unlock()
+
+        if shouldStartDrain {
+            drainOutboundAudio()
+        }
+    }
+
+    private func handleWebSocketReady() {
+        var bufferedCount = 0
+        var shouldStartDrain = false
+        outboundAudioLock.lock()
+        bufferedCount = outboundAudioChunks.count
+        isWebSocketReady = true
+        if !isDrainingOutboundAudio && !outboundAudioChunks.isEmpty {
+            isDrainingOutboundAudio = true
+            shouldStartDrain = true
+        }
+        outboundAudioLock.unlock()
+
+        if bufferedCount > 0 {
+            onSystemLog?("Scribe pre-roll queued: \(bufferedCount) chunks")
+        }
+
+        if shouldStartDrain {
+            drainOutboundAudio()
+        }
+    }
+
+    private func drainOutboundAudio() {
+        guard let task = webSocketTask else {
+            outboundAudioLock.lock()
+            isDrainingOutboundAudio = false
+            outboundAudioLock.unlock()
+            return
+        }
+
+        Task { [weak self] in
+            while true {
+                guard let self else { return }
+
+                let nextChunk: Data?
+                self.outboundAudioLock.lock()
+                if !self.isWebSocketReady || self.outboundAudioChunks.isEmpty {
+                    self.isDrainingOutboundAudio = false
+                    self.outboundAudioLock.unlock()
+                    break
+                }
+                nextChunk = self.outboundAudioChunks.removeFirst()
+                self.outboundAudioLock.unlock()
+
+                if let nextChunk {
+                    try? await task.send(Self.audioChunkMessage(from: nextChunk))
+                }
+            }
+        }
+    }
+
+    private func resetOutboundAudio() {
+        outboundAudioLock.lock()
+        isWebSocketReady = false
+        isDrainingOutboundAudio = false
+        outboundAudioChunks.removeAll()
+        outboundAudioLock.unlock()
     }
 }
